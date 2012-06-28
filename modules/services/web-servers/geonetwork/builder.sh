@@ -1,3 +1,6 @@
+source $stdenv/setup 
 
 cd $TMPDIR
-$jre/bin/jar xf $geonetwork/$warfile
+$jdk/bin/jar xf $geonetwork/$warfile
+
+cp -r . $out
