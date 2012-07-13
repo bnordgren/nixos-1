@@ -1,7 +1,7 @@
 source $stdenv/setup 
 
 cd $TMPDIR
-$jdk/bin/jar xf $geonetwork/$warfile
+jar xf $geonetwork/$warfile
 
 cat > db << END 
 ${databaseConfig}
@@ -11,6 +11,8 @@ sed -e "s#%UPLOAD%#${uploadDir}#g" \
     -e "/%DATABASE_CONFIG%/r db" \
     -e "/%DATABASE_CONFIG%/d" $configTemplate > WEB-INF/config.xml
 
+sed "s#%EXTENT%#${extent}#g" $guiTemplate > WEB-INF/config-gui.xml
+
 mkdir -p $out
-$jdk/bin/jar cf $out/geonetwork.war .
+jar cf $out/geonetwork.war .
 

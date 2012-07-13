@@ -13,9 +13,11 @@ let
     name    = "geonetwork-conf" ;
     builder = ./builder.sh ;
     configTemplate = ./config-template.xml;
+    guiTemplate = ./config-gui.xml ;
+    buildInputs = [ pkgs.jdk ] ; 
     inherit (pkgs) geonetwork jdk ; 
     inherit (pkgs.geonetwork) warfile ; 
-    inherit (cfg) uploadDir databaseConfig ; 
+    inherit (cfg) uploadDir databaseConfig extent ; 
   } ; 
 in
 
@@ -38,6 +40,11 @@ in
         default = "/var/geonetwork" ; 
         description = "Directory to contain files uploaded to Geonetwork" ; 
       };
+
+      extent = mkOption {
+        default = "-180,-90,180,90" ; 
+        description = "Initial extent for the search map and the map viewer.";  
+      } ; 
 
       databaseConfig = mkOption { 
         description = "Geonetwork XML configuration for database connection" ; 
