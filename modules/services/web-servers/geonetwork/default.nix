@@ -14,10 +14,11 @@ let
     builder = ./builder.sh ;
     configTemplate = ./config-template.xml;
     guiTemplate = ./config-gui.xml ;
+    logTemplate = ./log4j.cfg ; 
     buildInputs = [ pkgs.jdk ] ; 
-    inherit (pkgs) geonetwork jdk ; 
+    inherit (pkgs) geonetwork ; 
     inherit (pkgs.geonetwork) warfile ; 
-    inherit (cfg) uploadDir databaseConfig extent ; 
+    inherit (cfg) uploadDir databaseConfig extent logfile ; 
   } ; 
 in
 
@@ -44,6 +45,11 @@ in
       extent = mkOption {
         default = "-180,-90,180,90" ; 
         description = "Initial extent for the search map and the map viewer.";  
+      } ; 
+
+      logfile = mkOption { 
+        default = "${tomcatCfg.baseDir}/logs/geonetwork.log" ; 
+        description = "Log file for the geonetwork web application." ; 
       } ; 
 
       databaseConfig = mkOption { 
