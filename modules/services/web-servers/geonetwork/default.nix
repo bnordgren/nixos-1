@@ -18,7 +18,7 @@ let
     buildInputs = [ pkgs.jdk ] ; 
     inherit (pkgs) geonetwork ; 
     inherit (pkgs.geonetwork) warfile ; 
-    inherit (cfg) uploadDir databaseConfig extent logfile ; 
+    inherit (cfg) uploadMax uploadDir dataDir thesauriiDir databaseConfig extent logfile ; 
   } ; 
 in
 
@@ -37,9 +37,29 @@ in
         description = "Whether to enable Geonetwork Opensource";
       };
 
-      uploadDir = mkOption { 
+      uploadMax = mkOption { 
+        default = 100 ; 
+        description = "Maximum size of uploaded file (Mb)" ; 
+      };
+
+      baseDir = mkOption {
         default = "/var/geonetwork" ; 
+        description = "Base directory in which Geonetwork stores persistent data" ;  
+      } ; 
+
+      uploadDir = mkOption { 
+        default = "${cfg.baseDir}/uploads" ; 
         description = "Directory to contain files uploaded to Geonetwork" ; 
+      };
+
+      dataDir = mkOption { 
+        default = "${cfg.baseDir}/data" ; 
+        description = "Directory to contain metadata uploaded to Geonetwork" ; 
+      };
+
+      thesauriiDir = mkOption { 
+        default = "${cfg.baseDir}/thesaurii" ; 
+        description = "Directory to contain thesaurii maintained by Geonetwork" ; 
       };
 
       extent = mkOption {
@@ -182,9 +202,11 @@ Choose only one of the following resources and ensure that "enabled" = true
        stopOn  = "stopping tomcat" ; 
 
        preStart = ''
-            # create the upload directory
+            # create the various directories if necessary
             mkdir -p ${cfg.uploadDir}
-            chown -R ${tomcatCfg.user}.${tomcatCfg.group} ${cfg.uploadDir}
+            mkdir -p ${cfg.dataDir}
+            mkdir -p ${cfg.thesauriiDir}
+            chown -R ${tomcatCfg.user}.${tomcatCfg.group} ${cfg.uploadDir} ${cfg.dataDir} ${cfg.thesauriiDir}
        '' ;
     } ; 
   };
