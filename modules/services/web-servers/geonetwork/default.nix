@@ -18,7 +18,7 @@ let
     buildInputs = [ pkgs.jdk ] ; 
     inherit (pkgs) geonetwork ; 
     inherit (pkgs.geonetwork) warfile ; 
-    inherit (cfg) uploadMax uploadDir dataDir thesauriiDir databaseConfig extent logfile ; 
+    inherit (cfg) geoserverUrl uploadMax uploadDir dataDir thesauriiDir databaseConfig extent logfile ; 
   } ; 
 in
 
@@ -65,6 +65,11 @@ in
       extent = mkOption {
         default = "-180,-90,180,90" ; 
         description = "Initial extent for the search map and the map viewer.";  
+      } ; 
+
+      geoserverUrl = mkOption { 
+        default = "http://localhost:8080/geoserver/wms" ; 
+        description = "URL for the WMS server used by the search maps." ; 
       } ; 
 
       logfile = mkOption { 

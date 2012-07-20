@@ -14,7 +14,9 @@ sed -e "s#%UPLOAD%#${uploadDir}#g" \
     -e "/%DATABASE_CONFIG%/r db" \
     -e "/%DATABASE_CONFIG%/d" $configTemplate > WEB-INF/config.xml
 
-sed "s#%EXTENT%#${extent}#g" $guiTemplate > WEB-INF/config-gui.xml
+sed -e "s#%EXTENT%#${extent}#g" \
+    -e "s#%GEOSERVER_URL%#${geoserverUrl}#g" \
+     $guiTemplate > WEB-INF/config-gui.xml
 
 sed "s#%LOGFILE%#${logfile}#g" $logTemplate > WEB-INF/log4j.cfg
 
