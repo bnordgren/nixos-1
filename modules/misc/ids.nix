@@ -74,6 +74,7 @@ in
     bind = 53;
     wwwrun = 54;
     spamd = 55;
+    nslcd = 57;
 
     # When adding a uid, make sure it doesn't match an existing gid.
 
@@ -127,6 +128,7 @@ in
     fprot = 52;
     wwwrun = 54;
     networkmanager = 56;
+    nslcd = 57;
 
     # When adding a gid, make sure it doesn't match an existing uid.
 
