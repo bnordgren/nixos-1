@@ -2,7 +2,9 @@
 
 ###### interface
 let
-  inherit (pkgs.lib) mkOption mkIf optionalString stringAfter;
+  inherit (pkgs.lib) mkOption mkIf optionalString stringAfter singleton;
+
+  cfg = config.users.ldap;
 
   options = {
     users = {
@@ -47,6 +49,22 @@ let
             searches. A value of zero (0), which is the default, is to
             wait indefinitely for searches to be completed.
           ";
+        };
+
+        daemon = {
+          enable = mkOption {
+            default = false;
+            description = ''
+              Whether to let the nslcd daemon (nss-pam-ldapd) handle the
+              LDAP lookups for NSS and PAM. This can improve performance,
+              and if you need to bind to the LDAP server with a password,
+              it increases security, since only the nslcd user needs to
+              have access to the bindpw file, not everyone that uses NSS
+              and/or PAM. If this option is enabled, a local nscd user is
+              created automatically, and the nslcd service is started
+              automatically when the network get up.
+            '';
+          };
         };
 
         bind = {
@@ -102,52 +120,103 @@ let
       };
     };
   };
+
+  # Careful: OpenLDAP seems to be very picky about the indentation of
+  # this file.  Directives HAVE to start in the first column!
+  ldapConfig = {
+    target = "ldap.conf";
+    source = pkgs.writeText "ldap.conf" ''
+      uri ${config.users.ldap.server}
+      base ${config.users.ldap.base}
+      timelimit ${toString config.users.ldap.timeLimit}
+      bind_timelimit ${toString config.users.ldap.bind.timeLimit}
+      bind_policy ${config.users.ldap.bind.policy}
+      ${optionalString config.users.ldap.useTLS ''
+        ssl start_tls
+        tls_checkpeer no
+      ''}
+      ${optionalString (config.users.ldap.bind.distinguishedName != "") ''
+        binddn ${config.users.ldap.bind.distinguishedName}
+      ''}
+    '';
+  };
+
+  nslcdConfig = {
+    target = "nslcd.conf";
+    source = pkgs.writeText "nslcd.conf" ''
+      uid nslcd
+      gid nslcd
+      uri ${cfg.server}
+      base ${cfg.base}
+      timelimit ${toString cfg.timeLimit}
+      bind_timelimit ${toString cfg.bind.timeLimit}
+      ${optionalString (cfg.bind.distinguishedName != "")
+        "binddn ${cfg.bind.distinguishedName}" }
+    '';
+  };
+
+  insertLdapPassword = !config.users.ldap.daemon.enable &&
+    config.users.ldap.bind.distinguishedName != "";
+
 in
 
 ###### implementation
-
-mkIf config.users.ldap.enable {
+mkIf cfg.enable {
   require = [
     options
   ];
 
-  # LDAP configuration.
-  environment = {
-    etc = [
+  environment.etc = if cfg.daemon.enable then [nslcdConfig] else [ldapConfig];
 
-      # Careful: OpenLDAP seems to be very picky about the indentation of
-      # this file.  Directives HAVE to start in the first column!
-      { source = pkgs.writeText "ldap.conf"
-          ''
-            uri ${config.users.ldap.server}
-            base ${config.users.ldap.base}
-            timelimit ${toString config.users.ldap.timeLimit}
-            bind_timelimit ${toString config.users.ldap.bind.timeLimit}
-            bind_policy ${config.users.ldap.bind.policy}
-
-            ${optionalString config.users.ldap.useTLS ''
-              ssl start_tls
-              tls_checkpeer no
-            ''}
-
-            ${optionalString (config.users.ldap.bind.distinguishedName != "") ''
-              binddn ${config.users.ldap.bind.distinguishedName}
-            ''}
-          '';
-        target = "ldap.conf";
-      }
-
-    ];
-  };
-
-  system.activationScripts.ldap = stringAfter [ "etc" ] (
-    optionalString (config.users.ldap.bind.distinguishedName != "") ''
-      if test -f "${config.users.ldap.bind.password}" ; then
-        echo "bindpw $(cat ${config.users.ldap.bind.password})" | cat /etc/ldap.conf - > /etc/ldap.conf.bindpw
+  system.activationScripts = mkIf insertLdapPassword {
+    ldap = stringAfter [ "etc" "groups" "users" ] ''
+      if test -f "${cfg.bind.password}" ; then
+        echo "bindpw "$(cat ${cfg.bind.password})"" | cat ${ldapConfig} - > /etc/ldap.conf.bindpw
         mv -fT /etc/ldap.conf.bindpw /etc/ldap.conf
         chmod 600 /etc/ldap.conf
       fi
-    ''
+    '';
+  };
+
+  system.nssModules = singleton (
+    if cfg.daemon.enable then pkgs.nss_pam_ldapd else pkgs.nss_ldap
   );
 
+  users = mkIf cfg.daemon.enable {
+    extraGroups.nslcd = {
+      gid = config.ids.gids.nslcd;
+    };
+
+    extraUsers.nslcd = {
+      uid = config.ids.uids.nslcd;
+      description = "nslcd user.";
+      group = "nslcd";
+    };
+  };
+
+  jobs = mkIf cfg.daemon.enable {
+    nslcd = {
+      startOn = "filesystem";
+  
+      stopOn = "stopping network-interfaces";
+  
+      daemonType = "fork";
+  
+      path = [ pkgs.nss_pam_ldapd ];
+  
+      preStart = ''
+        mkdir -p /run/nslcd
+        chown nslcd.nslcd /run/nslcd
+        ${optionalString (cfg.bind.distinguishedName != "") ''
+          if test -s "${cfg.bind.password}" ; then
+            ln -sfT "${cfg.bind.password}" /run/nslcd/bindpw
+          fi
+        ''}
+      '';
+  
+      postStop = "rm -f /run/nslcd/nslcd.pid";
+  
+      exec = "nslcd";
+    };
+  };
 }

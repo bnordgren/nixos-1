@@ -17,14 +17,9 @@ let
       ";
       merge = pkgs.lib.mergeListOption;
       apply = list:
-        let
-          list2 =
-            list
-            # !!! this should be in the LDAP module
-            ++ pkgs.lib.optional config.users.ldap.enable pkgs.nss_ldap;
-        in {
-          list = list2;
-          path = pkgs.lib.makeLibraryPath list2;
+        {
+          inherit list;
+          path = pkgs.lib.makeLibraryPath list;
         };
     };
 
