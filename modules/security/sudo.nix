@@ -25,6 +25,15 @@ in
         '';
     };
 
+    security.sudo.wheelNeedsPassword = mkOption {
+      default = true;
+      description =
+        ''
+          Whether users of the <code>wheel</code> group can execute
+          commands as super user without entering a password.
+	'';
+      };
+
     security.sudo.configFile = mkOption {
       # Note: if syntax errors are detected in this file, the NixOS
       # configuration will fail to build.
@@ -34,6 +43,7 @@ in
 
           # Environment variables to keep for root and %wheel.
           Defaults:root,%wheel env_keep+=LOCALE_ARCHIVE
+          Defaults:root,%wheel env_keep+=NIX_CONF_DIR
           Defaults:root,%wheel env_keep+=NIX_PATH
           Defaults:root,%wheel env_keep+=TERMINFO_DIRS
 
@@ -44,7 +54,7 @@ in
           root        ALL=(ALL) SETENV: ALL
 
           # Users in the "wheel" group can do anything.
-          %wheel      ALL=(ALL) SETENV: ALL
+          %wheel      ALL=(ALL) ${if cfg.wheelNeedsPassword then "" else "NOPASSWD: ALL, "}SETENV: ALL
         '';
       description =
         ''

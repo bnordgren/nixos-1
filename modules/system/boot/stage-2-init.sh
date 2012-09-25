@@ -28,7 +28,7 @@ setPath "@path@"
 # However, in some environments (such as Amazon EC2), stage 2 is
 # executed directly, and the root is read-only.  So make it writable
 # here.
-mount -n -o remount,rw none /
+mount -n -o remount,rw /
 
 
 # Likewise, stage 1 mounts /proc, /dev and /sys, so if we don't have a
@@ -133,7 +133,7 @@ if ! mountpoint -q /run; then
     mount -t tmpfs -o "mode=0755,size=@runSize@" none /run
 fi
 
-mkdir -m 0700 -p /run/lock
+mkdir -m 0755 -p /run/lock
 
 
 # For backwards compatibility, symlink /var/run to /run, and /var/lock
@@ -155,12 +155,12 @@ $systemConfig/activate
 
 
 # Record the boot configuration.
-ln -sfn "$systemConfig" /var/run/booted-system
+ln -sfn "$systemConfig" /run/booted-system
 
 # Prevent the booted system form being garbage-collected If it weren't
 # a gcroot, if we were running a different kernel, switched system,
 # and garbage collected all, we could not load kernel modules anymore.
-ln -sfn /var/run/booted-system /nix/var/nix/gcroots/booted-system
+ln -sfn /run/booted-system /nix/var/nix/gcroots/booted-system
 
 
 # Run any user-specified commands.
@@ -189,4 +189,4 @@ fi
 
 # Start Upstart's init.
 echo "starting Upstart..."
-PATH=/var/run/current-system/upstart/sbin exec init --no-sessions ${debug2:+--verbose}
+PATH=/run/current-system/upstart/sbin exec init --no-sessions ${debug2:+--verbose}

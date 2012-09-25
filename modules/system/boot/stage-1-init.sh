@@ -70,6 +70,7 @@ mount -t sysfs none /sys
 mount -t tmpfs -o "mode=0755,size=@devSize@" none /dev
 mkdir -p /run
 mount -t tmpfs -o "mode=0755,size=@runSize@" none /run
+mount -t securityfs none /sys/kernel/security
 
 # Some console devices, for the interactivity
 mknod /dev/console c 5 1
@@ -144,6 +145,10 @@ udevadm trigger --action=add
 udevadm settle || true
 modprobe scsi_wait_scan || true
 udevadm settle || true
+
+
+# Load boot-time keymap before any LVM/LUKS initialization
+@extraUtils@/bin/busybox loadkmap < "@busyboxKeymap@"
 
 
 # XXX: Use case usb->lvm will still fail, usb->luks->lvm is covered
@@ -265,11 +270,7 @@ mountFS() {
     # For CIFS mounts, retry a few times before giving up.
     local n=0
     while true; do
-        if [ "$fsType" = "nfs" ]; then
-          nfsmount "$device" "/mnt-root$mountPoint" && break
-        else
-          mount "/mnt-root$mountPoint" && break
-        fi
+        mount "/mnt-root$mountPoint" && break
         if [ "$fsType" != cifs -o "$n" -ge 10 ]; then fail; break; fi
         echo "retrying..."
         n=$((n + 1))
@@ -332,6 +333,8 @@ while read -u 3 mountPoint; do
     mountFS "$device" "$mountPoint" "$options" "$fsType"
 done
 
+exec 3>&-
+
 
 @postMountCommands@
 
@@ -361,10 +364,10 @@ fi
 
 mkdir -m 0755 -p $targetRoot/proc $targetRoot/sys $targetRoot/dev $targetRoot/run
 
-mount --bind /proc $targetRoot/proc
-mount --bind /sys $targetRoot/sys
-mount --bind /dev $targetRoot/dev
-mount --bind /run $targetRoot/run
+mount --move /proc $targetRoot/proc
+mount --move /sys $targetRoot/sys
+mount --move /dev $targetRoot/dev
+mount --move /run $targetRoot/run
 
 exec switch_root "$targetRoot" "$stage2Init"
 

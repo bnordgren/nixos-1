@@ -14,27 +14,24 @@
   ./config/timezone.nix
   ./config/unix-odbc-drivers.nix
   ./config/users-groups.nix
+  ./hardware/all-firmware.nix
   ./hardware/cpu/intel-microcode.nix
+  ./hardware/cpu/amd-microcode.nix
+  ./hardware/network/b43.nix
   ./hardware/network/intel-2100bg.nix
   ./hardware/network/intel-2200bg.nix
   ./hardware/network/intel-3945abg.nix
-  ./hardware/network/rt73.nix
+  ./hardware/network/ralink.nix
   ./hardware/network/rtl8192c.nix
   ./hardware/pcmcia.nix
-  ./hardware/all-firmware.nix
-  ./installer/efi-boot-stub/efi-boot-stub.nix
-  ./installer/generations-dir/generations-dir.nix
-  ./installer/grub/grub.nix
-  ./installer/grub/memtest.nix
-  ./installer/init-script/init-script.nix
   ./installer/tools/nixos-checkout.nix
   ./installer/tools/tools.nix
   ./misc/assertions.nix
   ./misc/check-config.nix
   ./misc/crashdump.nix
   ./misc/ids.nix
-  ./misc/locate.nix
   ./misc/lib.nix
+  ./misc/locate.nix
   ./misc/nixpkgs.nix
   ./misc/passthru.nix
   ./misc/version.nix
@@ -46,6 +43,7 @@
   ./programs/ssmtp.nix
   ./programs/wvdial.nix
   ./rename.nix
+  ./security/apparmor.nix
   ./security/ca.nix
   ./security/consolekit.nix
   ./security/pam.nix
@@ -58,8 +56,8 @@
   ./services/amqp/rabbitmq.nix
   ./services/audio/alsa.nix
   ./services/audio/fuppes.nix
-  ./services/audio/pulseaudio.nix
   ./services/audio/mpd.nix
+  ./services/audio/pulseaudio.nix
   ./services/backup/mysql-backup.nix
   ./services/backup/postgresql-backup.nix
   ./services/backup/sitecopy-backup.nix
@@ -83,14 +81,15 @@
   ./services/hardware/udisks.nix
   ./services/hardware/upower.nix
   ./services/logging/klogd.nix
+  ./services/logging/logcheck.nix
   ./services/logging/logrotate.nix
   ./services/logging/logstash.nix
   ./services/logging/syslogd.nix
-  ./services/mail/dovecot.nix
   ./services/mail/dovecot2.nix
   ./services/mail/freepops.nix
   ./services/mail/mail.nix
   ./services/mail/postfix.nix
+  ./services/mail/spamassassin.nix
   ./services/misc/autofs.nix
   ./services/misc/disnix.nix
   ./services/misc/felix.nix
@@ -159,6 +158,8 @@
   ./services/scheduling/atd.nix
   ./services/scheduling/cron.nix
   ./services/scheduling/fcron.nix
+  ./services/security/clamav.nix
+  ./services/security/fprot.nix
   ./services/security/frandom.nix
   ./services/security/tor.nix
   ./services/security/torsocks.nix
@@ -197,6 +198,11 @@
   ./system/activation/activation-script.nix
   ./system/activation/top-level.nix
   ./system/boot/kernel.nix
+  ./system/boot/loader/efi-boot-stub/efi-boot-stub.nix
+  ./system/boot/loader/generations-dir/generations-dir.nix
+  ./system/boot/loader/grub/grub.nix
+  ./system/boot/loader/grub/memtest.nix
+  ./system/boot/loader/init-script/init-script.nix
   ./system/boot/luksroot.nix
   ./system/boot/modprobe.nix
   ./system/boot/stage-1.nix

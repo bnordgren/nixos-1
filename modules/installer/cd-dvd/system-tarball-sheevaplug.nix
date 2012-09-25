@@ -152,7 +152,7 @@ in
   services.nixosManual.enable = false;
 
   # Include the firmware for various wireless cards.
-  networking.enableRT73Firmware = true;
+  networking.enableRalinkFirmware = true;
   networking.enableIntel2200BGFirmware = true;
 
   # To speed up further installation of packages, include the complete stdenv
@@ -176,9 +176,6 @@ in
   services.openssh.enable = true;
   services.ttyBackgrounds.enable = false;
   jobs.openssh.startOn = pkgs.lib.mkOverrideTemplate 50 {} "";
-
-  # Needed for nixos to evaluate
-  system.build.menuBuilder = "true";
 
   nixpkgs.config = {
     platform = pkgs.platforms.sheevaplug;

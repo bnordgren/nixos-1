@@ -48,13 +48,13 @@ in
   config = mkIf crashdump.enable {
     boot = {
       postBootCommands = ''
-        ${pkgs.kexectools}/sbin/kexec -p /var/run/current-system/kernel \
-        --initrd=/var/run/current-system/initrd \
-        --append="init=$(readlink -f /var/run/current-system/init) system=$(readlink -f /var/run/current-system) irqpoll maxcpus=1 reset_devices ${kernelParams}" --reset-vga --console-vga
+        ${pkgs.kexectools}/sbin/kexec -p /run/current-system/kernel \
+        --initrd=/run/current-system/initrd \
+        --append="init=$(readlink -f /run/current-system/init) system=$(readlink -f /run/current-system) irqpoll maxcpus=1 reset_devices ${kernelParams}" --reset-vga --console-vga
       '';
       kernelParams = [
        "crashkernel=64M"
-       "nmi_watchdog=1"
+       "nmi_watchdog=panic"
       ];
       kernelPackages = mkOverride 50 (crashdump.kernelPackages // {
         kernel = crashdump.kernelPackages.kernel.override 
@@ -64,6 +64,8 @@ in
                 CRASH_DUMP y
                 DEBUG_INFO y
                 PROC_VMCORE y
+                LOCKUP_DETECTOR y
+                HARDLOCKUP_DETECTOR y
               '';
           });
       });

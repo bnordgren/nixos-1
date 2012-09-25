@@ -23,43 +23,13 @@ fi
 
 # Install or update the bootloader.
 if [ "$action" = "switch" -o "$action" = "boot" ]; then
-    
-    if [ "@bootLoader@" = "grub" ]; then
-        
-        mkdir -m 0700 -p /boot/grub
-        @menuBuilder@ @out@
-
-        # If the GRUB version has changed, then force a reinstall.
-        oldGrubVersion="$(cat /boot/grub/version 2>/dev/null || true)"
-        newGrubVersion="@grubVersion@"
-
-        if [ "$NIXOS_INSTALL_GRUB" = 1 -o "$oldGrubVersion" != "$newGrubVersion" ]; then
-            for dev in @grubDevices@; do
-                if [ "$dev" != nodev ]; then
-                    echo "installing the GRUB bootloader on $dev..."
-                    @grub@/sbin/grub-install "$(readlink -f "$dev")" --no-floppy
-                fi
-            done
-            echo "$newGrubVersion" > /boot/grub/version
-        fi
-          
-    elif [ "@bootLoader@" = "generationsDir" ]; then
-        @menuBuilder@ @out@
-    elif [ "@bootLoader@" = "efiBootStub" ]; then
-        @menuBuilder@ @out@
-    else
-        echo "Warning: don't know how to make this configuration bootable; please enable a boot loader." 1>&2
-    fi
-
-    if [ -n "@initScriptBuilder@" ]; then
-        @initScriptBuilder@ @out@
-    fi
+    @installBootLoader@ @out@
 fi
 
 # Activate the new configuration.
 if [ "$action" != switch -a "$action" != test ]; then exit 0; fi
 
-oldVersion=$(cat /var/run/current-system/upstart-interface-version 2> /dev/null || echo 0)
+oldVersion=$(cat /run/current-system/upstart-interface-version 2> /dev/null || echo 0)
 newVersion=$(cat @out@/upstart-interface-version 2> /dev/null || echo 0)
 
 if test "$oldVersion" -ne "$newVersion"; then

@@ -121,6 +121,20 @@ let
   enableSplashScreen =
     config.boot.vesa && config.boot.initrd.enableSplashScreen && kernelPackages.splashutils != null;
 
+  needsCifsUtils = kernelPackages.kernel ? features
+                && kernelPackages.kernel.features ? needsCifsUtils
+                && kernelPackages.kernel.features.needsCifsUtils
+                && any (fs: fs.fsType == "cifs") fileSystems;
+
+  busybox = if needsCifsUtils
+            then pkgs.busybox.override {
+                   extraConfig = ''
+                     CONFIG_FEATURE_MOUNT_CIFS n
+                     CONFIG_FEATURE_MOUNT_HELPERS y
+                   '';
+                 }
+            else pkgs.busybox;
+
 
   # Some additional utilities needed in stage 1, like mount, lvm, fsck
   # etc.  We don't want to bring in all of those packages, so we just
@@ -146,7 +160,7 @@ let
       cp -pv ${pkgs.gcc.gcc}/lib*/libgcc_s.so.* $out/lib
 
       # Copy BusyBox.
-      cp -rvd ${pkgs.busybox}/{bin,sbin} $out/
+      cp -rvd ${busybox}/{bin,sbin} $out/
       chmod -R u+w $out
 
       # Copy some utillinux stuff.
@@ -173,6 +187,11 @@ let
       # Maybe copy splashutils.
       ${optionalString enableSplashScreen ''
         cp ${kernelPackages.splashutils}/${kernelPackages.splashutils.helperName} $out/bin/splash_helper
+      ''}
+
+      # Maybe copy cifs utils
+      ${optionalString needsCifsUtils ''
+        cp -v ${pkgs.cifs_utils}/sbin/mount.cifs $out/bin
       ''}
 
       ${config.boot.initrd.extraUtilsCommands}
@@ -230,6 +249,7 @@ let
       cp -v ${pkgs.mdadm}/lib/udev/rules.d/*.rules $out/
 
       for i in $out/*.rules; do
+      
           substituteInPlace $i \
             --replace ata_id ${extraUtils}/bin/ata_id \
             --replace usb_id ${extraUtils}/bin/usb_id \
@@ -237,9 +257,10 @@ let
             --replace path_id ${extraUtils}/bin/path_id \
             --replace vol_id ${extraUtils}/bin/vol_id \
             --replace cdrom_id ${extraUtils}/bin/cdrom_id \
+            --replace ${pkgs.utillinux}/sbin/blkid ${extraUtils}/bin/blkid \
             --replace /sbin/blkid ${extraUtils}/bin/blkid \
             --replace /sbin/modprobe ${extraUtils}/bin/modprobe \
-            --replace 'ENV{DM_SBIN_PATH}="${pkgs.lvm2}/sbin"' 'ENV{DM_SBIN_PATH}="${extraUtils}/bin"' \
+            --replace ${pkgs.lvm2}/sbin ${extraUtils}/bin \
             --replace /sbin/mdadm ${extraUtils}/bin/mdadm
       done
       # !!! Remove this after merging the x-updates branch:
@@ -267,6 +288,15 @@ let
   '';
 
 
+  # the binary keymap for busybox to load at boot
+  busyboxKeymap = pkgs.runCommand "boottime-keymap"
+    { preferLocalBuild = true; }
+    ''
+      ${pkgs.kbd}/bin/loadkeys -qb "${config.i18n.consoleKeyMap}" > $out ||
+        ${pkgs.kbd}/bin/loadkeys -qbu "${config.i18n.consoleKeyMap}" > $out
+    '';
+
+
   # The init script of boot stage 1 (loading kernel modules for
   # mounting the root FS).
   bootStage1 = pkgs.substituteAll {
@@ -276,7 +306,7 @@ let
 
     isExecutable = true;
 
-    inherit udevConf extraUtils modulesClosure;
+    inherit udevConf busyboxKeymap extraUtils modulesClosure;
 
     inherit (config.boot) resumeDevice devSize runSize;
 
@@ -321,4 +351,8 @@ in {
   system.build.initialRamdisk = initialRamdisk;
   system.build.extraUtils = extraUtils;
 
+  system.requiredKernelConfig = with config.lib.kernelConfig; [
+    (isYes "TMPFS")
+    (isYes "BLK_DEV_INITRD")
+  ];
 }

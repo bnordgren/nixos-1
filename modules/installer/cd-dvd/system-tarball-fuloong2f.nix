@@ -128,7 +128,7 @@ in
     '';
 
   # Include the firmware for various wireless cards.
-  networking.enableRT73Firmware = true;
+  networking.enableRalinkFirmware = true;
   networking.enableIntel2200BGFirmware = true;
 
   # To speed up further installation of packages, include the complete stdenv
@@ -169,9 +169,6 @@ in
   boot.loader.grub.enable = false;
   boot.loader.generationsDir.enable = false;
   system.boot.loader.kernelFile = "vmlinux";
-
-  # Needed for nixos to evaluate
-  system.build.menuBuilder = "true";
 
   nixpkgs.config = {
     platform = pkgs.platforms.fuloong2f_n32;

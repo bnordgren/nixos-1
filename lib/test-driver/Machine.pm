@@ -8,9 +8,12 @@ use POSIX qw(dup2);
 use FileHandle;
 use Cwd;
 use File::Basename;
+use File::Path qw(make_path);
 
 
 my $showGraphics = defined $ENV{'DISPLAY'};
+
+my $sharedDir;
 
 
 sub new {
@@ -29,7 +32,8 @@ sub new {
         $startCommand =
             "qemu-kvm -m 384 " .
             "-net nic,model=virtio \$QEMU_OPTS ";
-        $startCommand .= "-drive file=" . Cwd::abs_path($args->{hda}) . ",if=virtio,boot=on,werror=report "
+        my $iface = $args->{hdaInterface} || "virtio";
+        $startCommand .= "-drive file=" . Cwd::abs_path($args->{hda}) . ",if=$iface,boot=on,werror=report "
             if defined $args->{hda};
         $startCommand .= "-cdrom $args->{cdrom} "
             if defined $args->{cdrom};
@@ -39,7 +43,11 @@ sub new {
     }
 
     my $tmpDir = $ENV{'TMPDIR'} || "/tmp";
-    
+    unless (defined $sharedDir) {
+        $sharedDir = $tmpDir . "/xchg-shared";
+        make_path($sharedDir, { mode => 0700, owner => $< });
+    }
+
     my $self = {
         startCommand => $startCommand,
         name => $name,
@@ -122,6 +130,7 @@ sub start {
         dup2(fileno($serialC), fileno(STDOUT));
         dup2(fileno($serialC), fileno(STDERR));
         $ENV{TMPDIR} = $self->{stateDir};
+        $ENV{SHARED_DIR} = $sharedDir;
         $ENV{USE_TMPDIR} = 1;
         $ENV{QEMU_OPTS} =
             "-no-reboot -monitor unix:./monitor -chardev socket,id=shell,path=./shell " .
