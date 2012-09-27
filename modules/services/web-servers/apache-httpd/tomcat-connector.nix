@@ -55,7 +55,8 @@ JkOptions +ForwardKeySize +ForwardURICompatUnparsed -ForwardDirectories
 JkRequestLogFormat "%w %V %T"
 
 # Mount your applications
-JkMount /__application__/* loadbalancer
+JkMount /geonetwork/* loadbalancer
+JkMount /geoserver/* loadbalancer
 
 # You can use external file for mount points.
 # It will be checked for updates each 60 seconds.
@@ -75,7 +76,7 @@ JkShmFile ${config.stateDir}/jk.shm
 JkAutoAlias /var/tomcat/webapps
 
 # All requests go to worker by default
-JkMount /* loadbalancer
+#JkMount /* loadbalancer
 # Serve some static files using httpd
 #JkUnMount /*.html loadbalancer
 #JkUnMount /*.jpg  loadbalancer
