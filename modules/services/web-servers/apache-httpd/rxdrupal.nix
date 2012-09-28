@@ -22,6 +22,14 @@ let
 in 
 
 {
+
+  phpOptions = ''
+        open_basedir = "${rxdrupalConfigured}:${config.publicUploadDir}:${config.privateUploadDir}:${config.tmpUploadDir}"
+        upload_tmp_dir = "${config.tmpUploadDir}"
+        upload_max_filesize = "${config.maxUploadSize}"
+        post_max_size = "${config.postMaxSize}"
+        max_file_uploads = ${config.maxFileUploads}
+  '';
   extraConfig = ''
         Alias ${config.urlPrefix} "${rxdrupalConfigured}"
         <Directory "${rxdrupalConfigured}">
@@ -29,10 +37,9 @@ in
                 Options FollowSymlinks
                 Order allow,deny
                 Allow from all
-                php_admin_value open_basedir "${rxdrupalConfigured}:${config.publicUploadDir}:${config.privateUploadDir}:${config.tmpUploadDir}"
         </Directory>
         <Directory "${config.publicUploadDir}">
-		AllowOverride None
+		AllowOverride Options
 		Order allow,deny
 		Allow from all
 	</Directory>
@@ -66,6 +73,22 @@ in
       default = "/mnt/rxcadre/drupal/tmp";
       example = "/mnt/rxcadre/drupal/tmp";
       description = "The directory that stores temporary files.";
+    };
+    maxUploadSize = mkOption {
+      default = "2M";
+      example = "256M";
+      description = "This sets the upload_max_filesize php.ini variable. It is a string to accomodate the K/M suffixes.";
+    };
+    maxFileUploads = mkOption {
+      default = "10";
+      example = "20";
+      description = "This sets the max_file_uploads php.ini variable. Only use integers.";
+    };
+    postMaxSize = mkOption {
+      default = "2M";
+      example = "256M";
+      description = ''This sets the post_max_size php.ini variable. It is a string to accomodate the K/M suffixes.
+	It should be a multiple of maxUploadSize.'';
     };
 
 
