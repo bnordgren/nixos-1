@@ -65,6 +65,13 @@ let
               automatically when the network get up.
             '';
           };
+
+          extraConfig = mkOption { 
+	    default =  [] ; 
+            description = '' 
+	      Extra configuration options to go in the nslcd.conf file.
+            '' ;
+	  } ; 
         };
 
         bind = {
@@ -117,6 +124,14 @@ let
           };
         };
 
+        extraConfig = mkOption { 
+          default = "" ; 
+          type = with pkgs.lib.types ; string ;
+          description = ''
+            Extra configuration to go in ldap.conf
+          '' ;
+        };
+
       };
     };
   };
@@ -138,6 +153,7 @@ let
       ${optionalString (config.users.ldap.bind.distinguishedName != "") ''
         binddn ${config.users.ldap.bind.distinguishedName}
       ''}
+      ${optionalString (cfg.extraConfig != "") cfg.extraConfig }
     '';
   };
 
@@ -152,6 +168,7 @@ let
       bind_timelimit ${toString cfg.bind.timeLimit}
       ${optionalString (cfg.bind.distinguishedName != "")
         "binddn ${cfg.bind.distinguishedName}" }
+      ${optionalString (cfg.daemon.extraConfig != "") cfg.daemon.extraConfig }
     '';
   };
 
