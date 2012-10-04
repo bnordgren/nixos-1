@@ -4,7 +4,13 @@
 
 with pkgs.lib;
 
-let cfg  = config.programs.rssh;
+let 
+  cfg  = config.programs.rssh;
+  customRssh = appendToName "-custom" (pkgs.rssh.override {
+     supportRsync = cfg.enableRsync ; 
+     umask = cfg.umask ;
+   }) ;
+
 
 in
 {
@@ -25,11 +31,17 @@ in
         description = "Controls whether the rssh shell allows rsync connections." ;
         type = with pkgs.lib.types; bool;
       };
+
+      umask = mkOption { 
+        default = "022" ; 
+        description = "Controls default permissions on new files.";
+        type = with pkgs.lib.types; string;
+      };
     };
   };
 
 
   config = mkIf cfg.available {
-    environment.systemPackages = if cfg.enableRsync then [pkgs.rssh_rsync] else [pkgs.rssh] ; 
+    environment.systemPackages = if ((cfg.umask == "022") && !cfg.enableRsync) then [pkgs.rssh] else [customRssh] ; 
   };
 }
