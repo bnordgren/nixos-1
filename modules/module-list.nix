@@ -38,6 +38,7 @@
   ./programs/bash/bash.nix
   ./programs/blcr.nix
   ./programs/info.nix
+  ./programs/rssh.nix
   ./programs/shadow.nix
   ./programs/ssh.nix
   ./programs/ssmtp.nix

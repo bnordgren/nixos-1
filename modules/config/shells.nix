@@ -1,7 +1,7 @@
 # This module creates /etc/shells, the file that defines the list of
 # permissible login shells for user accounts.
 
-{ config, pkgs, ... }:
+{ config, pkgs,  ... }:
 
 with pkgs.lib;
 
@@ -16,6 +16,7 @@ with pkgs.lib;
             /run/current-system/sw/bin/bash
             /var/run/current-system/sw/bin/bash
             /bin/sh
+            ${optionalString (any (elem: elem == pkgs.rssh) config.environment.systemPackages) "/run/current-system/sw/bin/rssh"}
           '';
       };
 
