@@ -4,7 +4,7 @@ with pkgs.lib;
 
 let 
   rxdrupalConfigured = pkgs.stdenv.mkDerivation rec {
-    name= "rxdrupalConfigured-7.15";
+    name= "rxdrupalConfigured-7.16";
     builder = ./rxdrupal.sh ;
     src = pkgs.rxdrupal;
 
@@ -17,32 +17,41 @@ let
     settings   = pkgs.rxdrupal.settings;
     htaccess   = pkgs.rxdrupal.htaccess;
     publicDir  = config.publicUploadDir;
+    webapp     = "webapp";
+    bindir     = "bin";
+    mysql      = pkgs.mysql ; 
+    gzip       = pkgs.gzip ;
+
+    backup     = ./backup.sh ;
+    restore    = ./restore.sh ;
   } ;
+
+  webapp_base = "${rxdrupalConfigured}/${rxdrupalConfigured.webapp}";
+
 
 in 
 
 {
 
-  phpOptions = ''
-        open_basedir = "${rxdrupalConfigured}:${config.publicUploadDir}:${config.privateUploadDir}:${config.tmpUploadDir}"
-        upload_tmp_dir = "${config.tmpUploadDir}"
-        upload_max_filesize = "${config.maxUploadSize}"
-        post_max_size = "${config.postMaxSize}"
-        max_file_uploads = ${config.maxFileUploads}
-  '';
   extraConfig = ''
-        Alias ${config.urlPrefix} "${rxdrupalConfigured}"
-        <Directory "${rxdrupalConfigured}">
+        Alias ${config.urlPrefix} "${webapp_base}"
+        <Directory "${webapp_base}">
                 AllowOverride All
                 Options FollowSymlinks
                 Order allow,deny
                 Allow from all
+                php_admin_flag engine on
+                php_admin_value open_basedir "${webapp_base}:${config.publicUploadDir}:${config.privateUploadDir}:${config.tmpUploadDir}"
+                php_admin_value upload_tmp_dir "${config.tmpUploadDir}"
+                php_admin_value upload_max_filesize "${config.maxUploadSize}"
+                php_admin_value post_max_size "${config.postMaxSize}"
+                php_admin_value max_file_uploads ${config.maxFileUploads}
         </Directory>
         <Directory "${config.publicUploadDir}">
-		AllowOverride Options
-		Order allow,deny
-		Allow from all
-	</Directory>
+                AllowOverride Options
+                Order allow,deny
+                Allow from all
+        </Directory>
   '';
 
 
@@ -112,5 +121,4 @@ in
       example = "db.example.com" ;
     };
   };
-
 }
