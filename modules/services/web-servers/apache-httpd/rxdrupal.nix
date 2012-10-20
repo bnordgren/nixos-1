@@ -27,6 +27,7 @@ let
   } ;
 
   webapp_base = "${rxdrupalConfigured}/${rxdrupalConfigured.webapp}";
+  php_basedir = "${webapp_base}:${config.publicUploadDir}:${config.privateUploadDir}:${config.tmpUploadDir}:/var/httpd" ;
 
 
 in 
@@ -41,7 +42,7 @@ in
                 Order allow,deny
                 Allow from all
                 php_admin_flag engine on
-                php_admin_value open_basedir "${webapp_base}:${config.publicUploadDir}:${config.privateUploadDir}:${config.tmpUploadDir}"
+                php_admin_value open_basedir "${php_basedir}"
                 php_admin_value upload_tmp_dir "${config.tmpUploadDir}"
                 php_admin_value upload_max_filesize "${config.maxUploadSize}"
                 php_admin_value post_max_size "${config.postMaxSize}"
