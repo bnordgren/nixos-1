@@ -28,8 +28,8 @@ let
   zipModules = list: with pkgs.lib;
     zip (n: v:
       if tail v != [] then
-        if n == "_type" then builtins.trace "Merge _type" (head v)
-        else if n == "extraConfigs" then builtins.trace "Merge extraConfigs" (concatLists v)
+        if n == "_type" then (head v)
+        else if n == "extraConfigs" then (concatLists v)
         else if n == "description" || n == "apply" then
           abort "Cannot rename an option to multiple options."
         else zipModules v
@@ -71,6 +71,11 @@ in zipModules ([]
 ++ rename obsolete "networking.enableWLAN" "networking.wireless.enable"
 ++ rename obsolete "networking.enableRT73Firmware" "networking.enableRalinkFirmware"
 
+# FIXME: Remove these eventually.
+++ rename obsolete "boot.systemd.sockets" "systemd.sockets"
+++ rename obsolete "boot.systemd.targets" "systemd.targets"
+++ rename obsolete "boot.systemd.services" "systemd.services"
+
 # Old Grub-related options.
 ++ rename obsolete "boot.copyKernels" "boot.loader.grub.copyKernels"
 ++ rename obsolete "boot.extraGrubEntries" "boot.loader.grub.extraEntries"
@@ -93,5 +98,13 @@ in zipModules ([]
 # KDE
 ++ rename deprecated "kde.extraPackages" "environment.kdePackages"
 # ++ rename obsolete "environment.kdePackages" "environment.systemPackages" # !!! doesn't work!
+
+# Multiple efi bootloaders now
+++ rename obsolete "boot.loader.efiBootStub.efiSysMountPoint" "boot.loader.efi.efiSysMountPoint"
+++ rename obsolete "boot.loader.efiBootStub.efiDisk" "boot.loader.efi.efibootmgr.efiDisk"
+++ rename obsolete "boot.loader.efiBootStub.efiPartition" "boot.loader.efi.efibootmgr.efiPartition"
+++ rename obsolete "boot.loader.efiBootStub.postEfiBootMgrCommands" "boot.loader.efi.efibootmgr.postEfiBootMgrCommands"
+++ rename obsolete "boot.loader.efiBootStub.runEfibootmgr" "boot.loader.efi.canTouchEfiVariables"
+++ rename obsolete "boot.loader.efi.efibootmgr.enable" "boot.loader.efi.canTouchEfiVariables"
 
 ) # do not add renaming after this.

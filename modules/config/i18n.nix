@@ -1,8 +1,10 @@
-{pkgs, config, ...}:
+{ config, pkgs, ... }:
+
+with pkgs.lib;
 
 ###### interface
+
 let
-  inherit (pkgs.lib) mkOption mkIf;
 
   options = {
     i18n = {
@@ -44,17 +46,17 @@ let
         description = "
           The keyboard mapping table for the virtual consoles.
         ";
+        type = types.uniq types.string;
       };
+
     };
+
   };
-in
 
 ###### implementation
 
-let
-
   glibcLocales = pkgs.glibcLocales.override {
-    allLocales = pkgs.lib.any (x: x == "all") config.i18n.supportedLocales;
+    allLocales = any (x: x == "all") config.i18n.supportedLocales;
     locales = config.i18n.supportedLocales;
   };
 
@@ -63,10 +65,19 @@ in
 {
   require = options;
 
-  environment.systemPackages = [glibcLocales];
+  environment.systemPackages = [ glibcLocales ];
 
   environment.shellInit =
     ''
       export LANG=${config.i18n.defaultLocale}
     '';
+
+  # ‘/etc/locale.conf’ is used by systemd.
+  environment.etc = singleton
+    { target = "locale.conf";
+      source = pkgs.writeText "locale.conf"
+        ''
+          LANG=${config.i18n.defaultLocale}
+        '';
+    };
 }

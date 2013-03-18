@@ -7,8 +7,14 @@ let
     src = ./efi-boot-stub-builder.sh;
     isExecutable = true;
     inherit (pkgs) bash;
-    path = [pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.glibc] ++ (pkgs.stdenv.lib.optionals config.boot.loader.efiBootStub.runEfibootmgr [pkgs.efibootmgr pkgs.module_init_tools]);
-    inherit (config.boot.loader.efiBootStub) efiSysMountPoint runEfibootmgr installStartupNsh efiDisk efiPartition;
+    path = [pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.glibc] ++ (pkgs.stdenv.lib.optionals config.boot.loader.efi.canTouchEfiVariables [pkgs.efibootmgr pkgs.module_init_tools]);
+    inherit (config.boot.loader.efiBootStub) installStartupNsh;
+
+    inherit (config.boot.loader.efi) efiSysMountPoint;
+
+    inherit (config.boot.loader.efi.efibootmgr) efiDisk efiPartition postEfiBootMgrCommands;
+
+    runEfibootmgr = config.boot.loader.efi.canTouchEfiVariables;
 
     efiShell = if config.boot.loader.efiBootStub.installShell then
       if pkgs.stdenv.isi686 then
@@ -48,38 +54,6 @@ in
               Whether to use the linux kernel as an EFI bootloader.
               When enabled, the kernel, initrd, and an EFI shell script
               to boot the system are copied to the EFI system partition.
-            '';
-          };
-
-          efiDisk = mkOption {
-            default = "/dev/sda";
-            description = ''
-              The disk that contains the EFI system partition. Only used by
-              efibootmgr
-            '';
-          };
-
-          efiPartition = mkOption {
-            default = "1";
-            description = ''
-              The partition number of the EFI system partition. Only used by
-              efibootmgr
-            '';
-          };
-
-          efiSysMountPoint = mkOption {
-            default = "/boot";
-            description = ''
-              Where the EFI System Partition is mounted.
-            '';
-          };
-
-          runEfibootmgr = mkOption {
-            default = false;
-            description = ''
-              Whether to run efibootmgr to add the configuration to the boot options list.
-              WARNING! efibootmgr has been rumored to brick Apple firmware on
-              old kernels! Don't use it on kernels older than 2.6.39!
             '';
           };
 

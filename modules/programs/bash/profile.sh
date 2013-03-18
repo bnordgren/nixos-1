@@ -13,7 +13,7 @@ export __ETC_PROFILE_DONE=1
 
 # Initialise a bunch of environment variables.
 export LOCALE_ARCHIVE=/run/current-system/sw/lib/locale/locale-archive
-export LD_LIBRARY_PATH=/run/opengl-driver/lib:/run/opengl-driver-32/lib # !!! only set if needed
+export LD_LIBRARY_PATH=/run/nss:/run/opengl-driver/lib:/run/opengl-driver-32/lib # !!! only set if needed
 export NIXPKGS_CONFIG=/etc/nix/nixpkgs-config.nix
 export NIX_PATH=/nix/var/nix/profiles/per-user/root/channels/nixos:nixpkgs=/etc/nixos/nixpkgs:nixos=/etc/nixos/nixos:nixos-config=/etc/nixos/configuration.nix:services=/etc/nixos/services
 export PAGER="less -R"
@@ -87,7 +87,7 @@ fi
 
 # Subscribe the root user to the NixOS channel by default.
 if [ "$USER" = root -a ! -e $HOME/.nix-channels ]; then
-    echo "http://nixos.org/releases/nixos/channels/nixos-unstable nixos" > $HOME/.nix-channels
+    echo "http://nixos.org/channels/nixos-unstable nixos" > $HOME/.nix-channels
 fi
 
 # Create the per-user garbage collector roots directory.

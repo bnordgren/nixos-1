@@ -63,7 +63,12 @@ with pkgs.lib;
           mkdir -p /mnt/etc/nixos
           cp ${./nova-config.nix} /mnt/etc/nixos/configuration.nix
 
+          # `switch-to-configuration' requires a /bin/sh
+          mkdir -p /mnt/bin
+          ln -s ${config.system.build.binsh}/bin/sh /mnt/bin/sh
+
           # Generate the GRUB menu.
+          ln -s vda /dev/sda
           chroot /mnt ${config.system.build.toplevel}/bin/switch-to-configuration boot
 
           umount /mnt/proc /mnt/dev /mnt/sys
@@ -71,11 +76,7 @@ with pkgs.lib;
         ''
     );
 
-  fileSystems =
-    [ { mountPoint = "/";
-        device = "/dev/disk/by-label/nixos";
-      }
-    ];
+  fileSystems."/".device = "/dev/disk/by-label/nixos";
 
   boot.loader.grub.version = 2;
   boot.loader.grub.device = "/dev/sda";

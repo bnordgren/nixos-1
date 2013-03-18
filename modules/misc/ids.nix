@@ -73,7 +73,8 @@ in
     fprot = 52;
     bind = 53;
     wwwrun = 54;
-    spamd = 55;
+    spamd = 56;
+    nslcd = 58;
 
     # When adding a uid, make sure it doesn't match an existing gid.
 
@@ -126,6 +127,11 @@ in
     clamav = 51;
     fprot = 52;
     wwwrun = 54;
+    adm = 55;
+    spamd = 56;
+    networkmanager = 57;
+    nslcd = 58;
+    scanner = 59;
 
     # When adding a gid, make sure it doesn't match an existing uid.
 

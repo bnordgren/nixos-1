@@ -8,11 +8,11 @@ let
     ''
       ensureDir $out
       ${
-        # Generate a .conf file for each event. (You can't have
+        # Generate a configuration file for each event. (You can't have
         # multiple events in one config file...)
         let f = event:
           ''
-            fn=$out/${event.name}.conf
+            fn=$out/${event.name}
             echo "event=${event.event}" > $fn
             echo "action=${pkgs.writeScript "${event.name}.sh" event.action}" >> $fn
           '';
@@ -95,15 +95,18 @@ in
   config = mkIf config.services.acpid.enable {
 
     jobs.acpid =
-      { description = "ACPI daemon";
+      { description = "ACPI Daemon";
 
-        startOn = "stopped udevtrigger and started syslogd";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "systemd-udev-settle.service" ];
 
         path = [ pkgs.acpid ];
 
         daemonType = "fork";
 
         exec = "acpid --confdir ${acpiConfDir}";
+
+        unitConfig.ConditionPathExists = [ "/proc/acpi" ];
       };
 
   };

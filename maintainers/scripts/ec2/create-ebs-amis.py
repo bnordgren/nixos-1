@@ -1,43 +1,53 @@
 #! /usr/bin/env python
 
+import os
 import sys
-from charon import deployment
-from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
-import charon.util
 import time
 import argparse
+import charon.util
+from charon import deployment
+from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 
 parser = argparse.ArgumentParser(description='Create an EBS-backed NixOS AMI')
 parser.add_argument('--region', dest='region', required=True, help='EC2 region')
-parser.add_argument('--key', dest='key_name', default="eelco", help='EC2 keypair')
 parser.add_argument('--keep', dest='keep', action='store_true', help='Keep Charon machine after use')
 parser.add_argument('--hvm', dest='hvm', action='store_true', help='Create HVM image')
 args = parser.parse_args()
 
 instance_type = "cc1.4xlarge" if args.hvm else "m1.small"
-key_name = args.key_name
 ebs_size = 8 if args.hvm else 20
+
 
 # Start a NixOS machine in the given region.
 f = open("ebs-creator-config.nix", "w")
-f.write('''{{ 
-  machine = 
+f.write('''{{
+  resources.ec2KeyPairs.keypair.accessKeyId = "logicblox-dev";
+  resources.ec2KeyPairs.keypair.region = "{0}";
+
+  machine =
     {{ pkgs, ... }}:
     {{
-      deployment.ec2.region = "{0}"; 
-      deployment.ec2.keyPair = pkgs.lib.mkOverride 10 "{1}";
-      deployment.ec2.blockDeviceMapping."/dev/xvdg".size = pkgs.lib.mkOverride 10 {2};
+      deployment.ec2.accessKeyId = "logicblox-dev";
+      deployment.ec2.region = "{0}";
+      deployment.ec2.blockDeviceMapping."/dev/xvdg".size = pkgs.lib.mkOverride 10 {1};
     }};
 }}
-'''.format(args.region, key_name, ebs_size))
+'''.format(args.region, ebs_size))
 f.close()
 
-depl = deployment.Deployment("./ebs-creator.json", create=True, nix_exprs=["./ebs-creator.nix", "./ebs-creator-config.nix"])
-depl.load_state()
-if not args.keep: depl.destroy_vms()
-depl.deploy()
+db = deployment.open_database(deployment.get_default_state_file())
+try:
+    depl = deployment.open_deployment(db, "ebs-creator")
+except Exception:
+    depl = deployment.create_deployment(db)
+    depl.name = "ebs-creator"
+depl.auto_response = "y"
+depl.nix_exprs = [os.path.abspath("./ebs-creator.nix"), os.path.abspath("./ebs-creator-config.nix")]
+if not args.keep: depl.destroy_resources()
+depl.deploy(allow_reboot=True)
 
 m = depl.machines['machine']
+
 
 # Do the installation.
 device="/dev/xvdg"
@@ -52,7 +62,7 @@ m.run_command("mkdir -p /mnt")
 m.run_command("mount {0} /mnt".format(device))
 m.run_command("touch /mnt/.ebs")
 m.run_command("mkdir -p /mnt/etc/nixos")
-m.run_command("nix-channel --add http://nixos.org/releases/nixos/channels/nixos-unstable")
+m.run_command("nix-channel --add http://nixos.org/channels/nixos-unstable")
 m.run_command("nix-channel --update")
 m.run_command("nixos-rebuild switch")
 version = m.run_command("nixos-version", capture_stdout=True).replace('"', '').rstrip()
@@ -60,7 +70,7 @@ print >> sys.stderr, "NixOS version is {0}".format(version)
 m.run_command("cp -f $(nix-instantiate --find-file nixos/modules/virtualisation/amazon-config.nix) /mnt/etc/nixos/configuration.nix")
 m.run_command("nixos-install")
 if args.hvm:
-    m.run_command('cp /nix/store/*-grub-0.97*/lib/grub/i386-pc/* /mnt/boot/grub')
+    m.run_command('cp /mnt/nix/store/*-grub-0.97*/lib/grub/i386-pc/* /mnt/boot/grub')
     m.run_command('sed -i "s|hd0|hd0,0|" /mnt/boot/grub/menu.lst')
     m.run_command('echo "(hd1) /dev/xvdg" > device.map')
     m.run_command('echo -e "root (hd1,0)\nsetup (hd1)" | grub --device-map=device.map --batch')
@@ -75,7 +85,7 @@ if args.hvm:
 else:
     ami_name = "nixos-{0}-x86_64-ebs".format(version)
     description = "NixOS {0} (x86_64; EBS root)".format(version)
-    
+
 
 # Wait for the snapshot to finish.
 def check():
@@ -84,12 +94,12 @@ def check():
     return status == '100%'
 
 m.connect()
-volume = m._conn.get_all_volumes([], filters={'attachment.instance-id': m._instance_id, 'attachment.device': "/dev/sdg"})[0]
+volume = m._conn.get_all_volumes([], filters={'attachment.instance-id': m.resource_id, 'attachment.device': "/dev/sdg"})[0]
 if args.hvm:
     instance = m._conn.run_instances( image_id="ami-6a9e4503"
                                     , instance_type=instance_type
                                     , key_name=key_name
-                                    , placement=m._zone
+                                    , placement=m.zone
                                     , security_groups=["eelco-test"]).instances[0]
     charon.util.check_wait(lambda: instance.update() == 'running', max_tries=120)
     instance.stop()
@@ -117,7 +127,7 @@ else:
 
     m._conn.create_tags([snapshot.id], {'Name': ami_name})
 
-    if not args.keep: depl.destroy_vms()
+    if not args.keep: depl.destroy_resources()
 
      # Register the image.
     aki = m._conn.get_all_images(filters={'manifest-location': '*pv-grub-hd0_1.03-x86_64*'})[0]
@@ -140,34 +150,49 @@ else:
 
 print >> sys.stderr, "registered AMI {0}".format(ami_id)
 
-time.sleep(5)
+print >> sys.stderr, "sleeping a bit..."
+time.sleep(30)
+
+print >> sys.stderr, "setting image name..."
+m._conn.create_tags([ami_id], {'Name': ami_name})
+
 print >> sys.stderr, "making image public..."
 image = m._conn.get_all_images(image_ids=[ami_id])[0]
 image.set_launch_permissions(user_ids=[], group_names=["all"])
 
-m._conn.create_tags([ami_id], {'Name': ami_name})
 
 # Do a test deployment to make sure that the AMI works.
 f = open("ebs-test.nix", "w")
 f.write(
     '''
-    {{ network.description = "NixOS EBS test";
-       machine.deployment.targetEnv = "ec2";
-       machine.deployment.ec2.region = "{0}";
-       machine.deployment.ec2.instanceType = "{2}";
-       machine.deployment.ec2.keyPair = "{3}";
-       machine.deployment.ec2.securityGroups = [ "eelco-test" ];
-       machine.deployment.ec2.ami = "{1}";
-       machine.fileSystems = [];
+    {{
+      network.description = "NixOS EBS test";
+
+      resources.ec2KeyPairs.keypair.accessKeyId = "logicblox-dev";
+      resources.ec2KeyPairs.keypair.region = "{0}";
+
+      machine = {{ config, pkgs, resources, ... }}: {{
+        deployment.targetEnv = "ec2";
+        deployment.ec2.accessKeyId = "logicblox-dev";
+        deployment.ec2.region = "{0}";
+        deployment.ec2.instanceType = "{2}";
+        deployment.ec2.keyPair = resources.ec2KeyPairs.keypair.name;
+        deployment.ec2.securityGroups = [ "admin" ];
+        deployment.ec2.ami = "{1}";
+      }};
     }}
-    '''.format(args.region, ami_id, instance_type, key_name))
+    '''.format(args.region, ami_id, instance_type))
 f.close()
 
-test_depl = deployment.Deployment("./ebs-test.json", create=True, nix_exprs=["./ebs-test.nix"])
-test_depl.load_state()
+test_depl = deployment.create_deployment(db)
+test_depl.auto_response = "y"
+test_depl.name = "ebs-creator-test"
+test_depl.nix_exprs = [os.path.abspath("./ebs-test.nix")]
 test_depl.deploy(create_only=True)
 test_depl.machines['machine'].run_command("nixos-version")
-if not args.keep: test_depl.destroy_vms()
+if not args.keep:
+    test_depl.destroy_resources()
+    test_depl.delete()
 
 # Log the AMI ID.
 f = open("{0}.ebs.ami-id".format(args.region), "w")

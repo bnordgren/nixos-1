@@ -3,7 +3,9 @@
 {config, pkgs, ...}:
 
 with pkgs.lib;
+
 let
+
   cfg = config.networking;
 
   options = {
@@ -16,14 +18,19 @@ let
       '';
     };
 
+    networking.dnsSingleRequest = pkgs.lib.mkOption {
+      default = false;
+      description = ''
+        Recent versions of glibc will issue both ipv4 (A) and ipv6 (AAAA)
+        address queries at the same time, from the same port. Sometimes upstream
+        routers will systemically drop the ipv4 queries. The symptom of this problem is
+        that 'getent hosts example.com' only returns ipv6 (or perhaps only ipv4) addresses. The
+        workaround for this is to specify the option 'single-request' in
+        /etc/resolve.conf. This option enables that. 
+      '';
+    };
+
   };
-
-  localhostWithDomain = optionalString (cfg.domain != "")
-    "localhost.${cfg.domain}";
-
-  hostnameWithDomain = optionalString
-    (cfg.domain != "" && cfg.hostName != "")
-    "${cfg.hostName}.${cfg.domain}";
 
 in
 
@@ -31,34 +38,27 @@ in
   require = [options];
 
   environment.etc =
-    [ { # /etc/services: TCP/UDP port assignments.
-        source = pkgs.iana_etc + "/etc/services";
-        target = "services";
-      }
+    { # /etc/services: TCP/UDP port assignments.
+      "services".source = pkgs.iana_etc + "/etc/services";
 
-      { # /etc/protocols: IP protocol numbers.
-        source = pkgs.iana_etc + "/etc/protocols";
-        target = "protocols";
-      }
+      # /etc/protocols: IP protocol numbers.
+      "protocols".source  = pkgs.iana_etc + "/etc/protocols";
 
-      { # /etc/rpc: RPC program numbers.
-        source = pkgs.glibc + "/etc/rpc";
-        target = "rpc";
-      }
+      # /etc/rpc: RPC program numbers.
+      "rpc".source = pkgs.glibc + "/etc/rpc";
 
-      { # /etc/hosts: Hostname-to-IP mappings.
-        source = pkgs.writeText "hosts"
-          ''
-            ${optionalString (cfg.hostName != "")
-              "127.0.0.1 ${hostnameWithDomain} ${cfg.hostName}"}
-            127.0.0.1 localhost ${localhostWithDomain}
-            ${cfg.extraHosts}
-          '';
-        target = "hosts";
-      }
+      # /etc/hosts: Hostname-to-IP mappings.
+      "hosts".text =
+        ''
+          127.0.0.1 localhost
+          ${optionalString cfg.enableIPv6 ''
+            ::1 localhost
+          ''}
+          ${cfg.extraHosts}
+        '';
 
-      { # /etc/resolvconf.conf: Configuration for openresolv.
-        source = pkgs.writeText "resolvconf.conf" (
+      # /etc/resolvconf.conf: Configuration for openresolv.
+      "resolvconf.conf".text =
           ''
             # This is the default, but we must set it here to prevent
             # a collision with an apparently unrelated environment
@@ -67,12 +67,18 @@ in
           '' + optionalString config.services.nscd.enable ''
             # Invalidate the nscd cache whenever resolv.conf is
             # regenerated.
-            libc_restart='${pkgs.upstart}/sbin/start invalidate-nscd'
+            libc_restart='${pkgs.systemd}/bin/systemctl reload --no-block nscd.service'
+          '' + optionalString cfg.dnsSingleRequest ''
+            # only send one DNS request at a time
+            resolv_conf_options='single-request'
           '' + optionalString config.services.bind.enable ''
             # This hosts runs a full-blown DNS resolver.
             name_servers='127.0.0.1'
-          '' );
-        target = "resolvconf.conf";
-      }
-    ];
+          '';
+    };
+
+  # The ‘ip-up’ target is started when we have IP connectivity.  So
+  # services that depend on IP connectivity (like ntpd) should be
+  # pulled in by this target.
+  systemd.targets.ip-up.description = "Services Requiring IP Connectivity";
 }

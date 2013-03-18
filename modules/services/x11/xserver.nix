@@ -18,6 +18,7 @@ let
     nvidia       = { modules = [ kernelPackages.nvidia_x11 ]; };
     nvidiaLegacy96 = { modules = [ kernelPackages.nvidia_x11_legacy96 ]; driverName = "nvidia"; };
     nvidiaLegacy173 = { modules = [ kernelPackages.nvidia_x11_legacy173 ]; driverName = "nvidia"; };
+    nvidiaLegacy304 = { modules = [ kernelPackages.nvidia_x11_legacy304 ]; driverName = "nvidia"; };
     unichrome    = { modules = [ pkgs.xorgVideoUnichrome ]; };
     virtualbox   = { modules = [ kernelPackages.virtualboxGuestAdditions ]; driverName = "vboxvideo"; };
   };
@@ -28,7 +29,6 @@ let
   drivers = flip map driverNames
     (name: { inherit name; driverName = name; } //
       attrByPath [name] (if (hasAttr ("xf86video" + name) xorg) then { modules = [(getAttr ("xf86video" + name) xorg) ]; } else throw "unknown video driver `${name}'") knownVideoDrivers);
-
 
   fontsForXServer =
     config.fonts.fonts ++
@@ -41,6 +41,38 @@ let
     [ pkgs.xorg.fontadobe100dpi
       pkgs.xorg.fontadobe75dpi
     ];
+
+
+  # Just enumerate all heads without discarding XRandR output information.
+  xrandrHeads = let
+    mkHead = num: output: {
+      name = "multihead${toString num}";
+      inherit output;
+    };
+  in imap mkHead cfg.xrandrHeads;
+
+  xrandrDeviceSection = flip concatMapStrings xrandrHeads (h: ''
+    Option "monitor-${h.output}" "${h.name}"
+  '');
+
+  # Here we chain every monitor from the left to right, so we have:
+  # m4 right of m3 right of m2 right of m1   .----.----.----.----.
+  # Which will end up in reverse ----------> | m1 | m2 | m3 | m4 |
+  #                                          `----^----^----^----'
+  xrandrMonitorSections = let
+    mkMonitor = previous: current: previous ++ singleton {
+      inherit (current) name;
+      value = ''
+        Section "Monitor"
+          Identifier "${current.name}"
+          ${optionalString (previous != []) ''
+          Option "RightOf" "${(head previous).name}"
+          ''}
+        EndSection
+      '';
+    };
+    monitors = foldl mkMonitor [] xrandrHeads;
+  in concatMapStrings (getAttr "value") monitors;
 
 
   configFile = pkgs.stdenv.mkDerivation {
@@ -75,6 +107,17 @@ let
         echo "$config" >> $out
       ''; # */
   };
+
+
+  checkAgent = mkAssert (!(cfg.startOpenSSHAgent && cfg.startGnuPGAgent))
+    ''
+      The OpenSSH agent and GnuPG agent cannot be started both.
+      Choose between `startOpenSSHAgent' and `startGnuPGAgent'.
+    '';
+
+  checkPolkit = mkAssert config.security.polkit.enable
+    "X11 requires Polkit to be enabled (‘security.polkit.enable = true’).";
+
 
 in
 
@@ -160,6 +203,15 @@ in
         '';
       };
 
+      vaapiDrivers = mkOption {
+        default = [ ];
+        defaultText = "[ pkgs.vaapiIntel pkgs.vaapiVdpau ]";
+        example = "[ pkgs.vaapiIntel pkgs.vaapiVdpau ]";
+        description = ''
+          Packages providing libva acceleration drivers.
+        '';
+      };
+
       driSupport = mkOption {
         default = true;
         description = ''
@@ -173,7 +225,8 @@ in
         description = ''
           On 64-bit systems, whether to support Direct Rendering for
           32-bit applications (such as Wine).  This is currently only
-          supported for the <literal>nvidia</literal> driver.
+          supported for the <literal>nvidia</literal> driver and for
+          <literal>mesa</literal>.
         '';
       };
 
@@ -255,6 +308,21 @@ in
         description = "Contents of the first Monitor section of the X server configuration file.";
       };
 
+      xrandrHeads = mkOption {
+        default = [];
+        example = [ "HDMI-0" "DVI-0" ];
+        type = with types; listOf string;
+        description = ''
+          Simple multiple monitor configuration, just specify a list of XRandR
+          outputs which will be mapped from left to right in the order of the
+          list.
+
+          Be careful using this option with multiple graphic adapters or with
+          drivers that have poor support for XRandR, unexpected things might
+          happen with those.
+        '';
+      };
+
       moduleSection = mkOption {
         default = "";
         example =
@@ -328,22 +396,18 @@ in
 
   ###### implementation
 
-  config = mkIf cfg.enable
-    (mkAssert (!(cfg.startOpenSSHAgent && cfg.startGnuPGAgent))
-      ''
-        The OpenSSH agent and GnuPG agent cannot be started both.
-        Choose between `startOpenSSHAgent' and `startGnuPGAgent'.
-      ''
-  {
+  config = mkIf cfg.enable (checkAgent (checkPolkit {
 
     boot.extraModulePackages =
       optional (elem "nvidia" driverNames) kernelPackages.nvidia_x11 ++
       optional (elem "nvidiaLegacy96" driverNames) kernelPackages.nvidia_x11_legacy96 ++
       optional (elem "nvidiaLegacy173" driverNames) kernelPackages.nvidia_x11_legacy173 ++
+      optional (elem "nvidiaLegacy304" driverNames) kernelPackages.nvidia_x11_legacy304 ++
       optional (elem "virtualbox" driverNames) kernelPackages.virtualboxGuestAdditions ++
       optional (elem "ati_unfree" driverNames) kernelPackages.ati_drivers_x11;
 
-    environment.etc = optionals cfg.exportConfiguration
+    environment.etc =
+    (optionals cfg.exportConfiguration
       [ { source = "${configFile}";
           target = "X11/xorg.conf";
         }
@@ -351,7 +415,15 @@ in
         { source = "${pkgs.xkeyboard_config}/etc/X11/xkb";
           target = "X11/xkb";
         }
-      ];
+      ])
+    ++ (optionals (elem "ati_unfree" driverNames) [
+
+        # according toiive on #ati you don't need the pcs, it is like registry... keeps old stuff to make your
+        # life harder ;) Still it seems to be required
+        { source = "${kernelPackages.ati_drivers_x11}/etc/ati";
+          target = "ati";
+        }
+    ]);
 
     environment.x11Packages =
       [ xorg.xorgserver
@@ -369,6 +441,7 @@ in
       ++ optional (elem "nvidia" driverNames) kernelPackages.nvidia_x11
       ++ optional (elem "nvidiaLegacy96" driverNames) kernelPackages.nvidia_x11_legacy96
       ++ optional (elem "nvidiaLegacy173" driverNames) kernelPackages.nvidia_x11_legacy173
+      ++ optional (elem "nvidiaLegacy304" driverNames) kernelPackages.nvidia_x11_legacy304
       ++ optional (elem "virtualbox" driverNames) xorg.xrefresh
       ++ optional (elem "ati_unfree" driverNames) kernelPackages.ati_drivers_x11;
 
@@ -377,15 +450,14 @@ in
     environment.pathsToLink =
       [ "/etc/xdg" "/share/xdg" "/share/applications" "/share/icons" "/share/pixmaps" ];
 
-    jobs."xserver-start-check" =
-      { startOn = if cfg.autorun then "filesystem and stopped udevtrigger" else "";
-        stopOn = "";
-        task = true;
-        script = "grep -qv noX11 /proc/cmdline && start xserver || true";
-      };
+    systemd.defaultUnit = mkIf cfg.autorun "graphical.target";
 
-    jobs.xserver =
-      { restartIfChanged = false;
+    systemd.services."display-manager" =
+      { description = "X11 Server";
+
+        after = [ "systemd-udev-settle.service" "local-fs.target" ];
+
+        restartIfChanged = false;
 
         environment =
           { FONTCONFIG_FILE = "/etc/fonts/fonts.conf"; # !!! cleanup
@@ -400,6 +472,8 @@ in
             LD_LIBRARY_PATH = "${xorg.libX11}/lib:${xorg.libXext}/lib:${kernelPackages.nvidia_x11_legacy96}/lib";
           } // optionalAttrs (elem "nvidiaLegacy173" driverNames) {
             LD_LIBRARY_PATH = "${xorg.libX11}/lib:${xorg.libXext}/lib:${kernelPackages.nvidia_x11_legacy173}/lib";
+          } // optionalAttrs (elem "nvidiaLegacy304" driverNames) {
+            LD_LIBRARY_PATH = "${xorg.libX11}/lib:${xorg.libXext}/lib:${kernelPackages.nvidia_x11_legacy304}/lib";
           } // optionalAttrs (elem "ati_unfree" driverNames) {
             LD_LIBRARY_PATH = "${xorg.libX11}/lib:${xorg.libXext}/lib:${kernelPackages.ati_drivers_x11}/lib:${kernelPackages.ati_drivers_x11}/X11R6/lib64/modules/linux";
             XORG_DRI_DRIVER_PATH = "${kernelPackages.ati_drivers_x11}/lib/dri"; # is ignored because ati drivers ship their own unpatched libglx.so !
@@ -420,9 +494,20 @@ in
                 "ln -sf ${kernelPackages.nvidia_x11_legacy96} /run/opengl-driver"
               else if elem "nvidiaLegacy173" driverNames then
                 "ln -sf ${kernelPackages.nvidia_x11_legacy173} /run/opengl-driver"
-              else if cfg.driSupport then
-                "ln -sf ${pkgs.mesa} /run/opengl-driver"
-              else ""
+              else if elem "nvidiaLegacy304" driverNames then
+                ''
+                  ln -sf ${kernelPackages.nvidia_x11_legacy304} /run/opengl-driver
+                  ${optionalString (pkgs.stdenv.system == "x86_64-linux" && cfg.driSupport32Bit)
+                    "ln -sf ${pkgs_i686.linuxPackages.nvidia_x11_legacy304.override { libsOnly = true; kernel = null; } } /run/opengl-driver-32"}
+                ''
+              else if elem "ati_unfree" driverNames then
+                "ln -sf ${kernelPackages.ati_drivers_x11} /run/opengl-driver"
+              else
+                ''
+                  ${optionalString cfg.driSupport "ln -sf ${pkgs.mesa} /run/opengl-driver"}
+                  ${optionalString (pkgs.stdenv.system == "x86_64-linux" && cfg.driSupport32Bit)
+                    "ln -sf ${pkgs_i686.mesa} /run/opengl-driver-32"}
+                ''
             }
 
             ${cfg.displayManager.job.preStart}
@@ -493,6 +578,7 @@ in
             Identifier "Device-${driver.name}[0]"
             Driver "${driver.driverName}"
             ${cfg.deviceSection}
+            ${xrandrDeviceSection}
           EndSection
 
           Section "Screen"
@@ -534,8 +620,10 @@ in
 
           EndSection
         '')}
+
+        ${xrandrMonitorSections}
       '';
 
-  });
+  }));
 
 }

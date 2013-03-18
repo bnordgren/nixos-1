@@ -1,5 +1,5 @@
-{ nixosSrc ? {outPath = ./.; revCount = 1234; shortRev = "abcdef"; }
-, nixpkgs ? {outPath = <nixpkgs>; revCount = 5678; shortRev = "fedcba"; }
+{ nixosSrc ? {outPath = ./.; revCount = 1234; shortRev = "abcdefg"; }
+, nixpkgs ? {outPath = <nixpkgs>; revCount = 5678; shortRev = "gfedcba"; }
 #, minimal ? false
 }:
 
@@ -20,7 +20,7 @@ let
     let
 
       versionModule =
-        { system.nixosVersion = version + (lib.optionalString (!officialRelease) versionSuffix);
+        { system.nixosVersionSuffix = lib.optionalString (!officialRelease) versionSuffix;
           isoImage.isoBaseName = "nixos-${type}";
         };
 
@@ -55,7 +55,7 @@ let
 
     with import <nixpkgs> {inherit system;};
     let
-      versionModule = { system.nixosVersion = version + (lib.optionalString (!officialRelease) versionSuffix); };
+      versionModule = { system.nixosVersionSuffix = lib.optionalString (!officialRelease) versionSuffix; };
 
       config = (import lib/eval-config.nix {
         inherit system;
@@ -86,7 +86,8 @@ let
 
         src = nixosSrc;
 
-        inherit officialRelease version versionSuffix;
+        inherit officialRelease version;
+        versionSuffix = lib.optionalString (!officialRelease) versionSuffix;
 
         distPhase = ''
           echo -n $VERSION_SUFFIX > .version-suffix
@@ -111,7 +112,8 @@ let
 
         src = nixosSrc;
 
-        inherit officialRelease version versionSuffix;
+        inherit officialRelease version;
+        versionSuffix = lib.optionalString (!officialRelease) versionSuffix;
 
         buildInputs = [ nixUnstable ];
 
@@ -128,7 +130,7 @@ let
           NIX_STATE_DIR=$TMPDIR nix-env -f ../$releaseName/default.nix -qaP --meta --xml \* > /dev/null
           cd ..
           chmod -R u+w $releaseName
-          tar cfj $out/tarballs/$releaseName.tar.bz2 $releaseName
+          tar cfJ $out/tarballs/$releaseName.tar.xz $releaseName
         ''; # */
       };
 
@@ -140,7 +142,10 @@ let
         pkgs = import <nixpkgs> {};
         options =
           (import lib/eval-config.nix {
-            modules = [ { fileSystems = []; } ];
+            modules = [
+              { fileSystems = [];
+                boot.loader.grub.device = "/dev/sda";
+              } ];
           }).options;
         revision = toString nixosSrc.rev;
       }).manual;
@@ -163,11 +168,12 @@ let
       type = "new-kernel";
     };
 
-    # A variant with experimental efi booting support. Currently requires
-    # an RC kernel. Eventually this should probably be merged into cd-minimal
+    # A variant with efi booting support. Once cd-minimal has a newer kernel,
+    # this should be enabled by default.
     iso_efi = makeIso {
       module = ./modules/installer/cd-dvd/installation-cd-efi.nix;
       type = "efi";
+      maintainers = [ "shlevy" ];
     };
 
     # Provide a tarball that can be unpacked into an SD card, and easily
@@ -193,10 +199,9 @@ let
     */
 
 
-    tests =
+    tests = { system ? "x86_64-linux" }:
       let
-        t = import ./tests { system = "i686-linux"; };
-        t_64 = import ./tests { system = "x86_64-linux"; };
+        t = import ./tests { inherit system; };
       in {
         avahi = t.avahi.test;
         bittorrent = t.bittorrent.test;
@@ -207,7 +212,6 @@ let
         installer.rebuildCD = t.installer.rebuildCD.test;
         installer.separateBoot = t.installer.separateBoot.test;
         installer.simple = t.installer.simple.test;
-        installer.simple_64 = t_64.installer.simple.test;
         installer.swraid = t.installer.swraid.test;
         ipv6 = t.ipv6.test;
         kde4 = t.kde4.test;

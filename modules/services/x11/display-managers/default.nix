@@ -16,11 +16,19 @@ let
   cfg = config.services.xserver;
   xorg = pkgs.xorg;
 
+  vaapiDrivers = pkgs.buildEnv {
+    name = "vaapi-drivers";
+    paths = cfg.vaapiDrivers;
+    # We only want /lib/dri, but with a single input path, we need "/" for it to work
+    pathsToLink = [ "/" ];
+  };
+
   # file provided by services.xserver.displayManager.session.script
   xsession = wm: dm: pkgs.writeScript "xsession"
     ''
       #! /bin/sh
 
+      . /etc/profile
       cd "$HOME"
 
       # The first argument of this script is the session type.
@@ -30,6 +38,13 @@ let
       ${optionalString (!cfg.displayManager.job.logsXsession) ''
         exec > ~/.xsession-errors 2>&1
       ''}
+
+      # Stop systemd from handling the power button and lid switch,
+      # since presumably the desktop environment will handle these.
+      if [ -z "$_INHIBITION_LOCK_TAKEN" ]; then
+        export _INHIBITION_LOCK_TAKEN=1
+        exec ${config.systemd.package}/bin/systemd-inhibit --what=handle-lid-switch:handle-power-key "$0" "$sessionType"
+      fi
 
       ${optionalString cfg.startOpenSSHAgent ''
         if test -z "$SSH_AUTH_SOCK"; then
@@ -53,12 +68,6 @@ let
         fi
       ''}
 
-      # Start a ConsoleKit session so that we get ownership of various
-      # devices.
-      if test -z "$XDG_SESSION_COOKIE"; then
-          exec ${pkgs.consolekit}/bin/ck-launch-session "$0" "$sessionType"
-      fi
-
       # Handle being called by kdm.
       if test "''${1:0:1}" = /; then eval exec "$1"; fi
 
@@ -77,6 +86,8 @@ let
       if test -e ~/.Xdefaults; then
           ${xorg.xrdb}/bin/xrdb -merge ~/.Xdefaults
       fi
+
+      export LIBVA_DRIVERS_PATH=${vaapiDrivers}/lib/dri
 
       source /etc/profile
 
@@ -124,7 +135,7 @@ let
 
   mkDesktops = names: pkgs.runCommand "desktops" {}
     ''
-      ensureDir $out
+      mkdir -p $out
       ${concatMapStrings (n: ''
         cat - > "$out/${n}.desktop" << EODESKTOP
         [Desktop Entry]

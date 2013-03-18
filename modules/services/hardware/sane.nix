@@ -24,11 +24,17 @@ with pkgs.lib;
   ###### implementation
 
     config = let pkg = if config.hardware.sane.snapshot
-                          then pkgs.saneBackendsSnapshot
+                          then pkgs.saneBackendsGit
                           else pkgs.saneBackends;
       in mkIf config.hardware.sane.enable {
            environment.systemPackages = [ pkg ];
            services.udev.packages = [ pkg ];
+           
+           users.extraGroups = singleton {
+             name = "scanner";
+             gid = config.ids.gids.scanner;
+           };
+
       };
 
 }

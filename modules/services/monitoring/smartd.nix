@@ -6,6 +6,27 @@ let
 
   cfg = config.services.smartd;
 
+  smartdOpts = { name, ... }: {
+
+    options = {
+
+      device = mkOption {
+        example = "/dev/sda";
+        type = types.string;
+        description = "Location of the device.";
+      };
+
+      options = mkOption {
+        default = "";
+        example = "-d sat";
+        type = types.string;
+        merge = pkgs.lib.concatStringsSep " ";
+        description = "Options that determine how smartd monitors the device";
+      };
+    };
+
+  };
+
   smartdMail = pkgs.writeScript "smartdmail.sh" ''
     #! ${pkgs.stdenv.shell}
     TMPNAM=/tmp/smartd-message.$$.tmp
@@ -24,7 +45,7 @@ let
 
   smartdConf = pkgs.writeText "smartd.conf" (concatMapStrings (device:
     ''
-      ${device} -a -m root -M exec ${smartdMail}
+      ${device.device} -a -m root -M exec ${smartdMail} ${device.options} ${cfg.deviceOpts}
     ''
     ) cfg.devices);
 
@@ -50,9 +71,22 @@ in
         '';
       };
 
+      deviceOpts = mkOption {
+        default = "";
+        type = types.string;
+        example = "-o on -s (S/../.././02|L/../../7/04)";
+        description = ''
+          Additional options for each device that is monitored. The example
+          turns on SMART Automatic Offline Testing on startup, and schedules short
+          self-tests daily, and long self-tests weekly.
+        '';
+      };
+
       devices = mkOption {
         default = [];
-        example = ["/dev/sda" "/dev/sdb"];
+        example = [ { device = "/dev/sda"; } { device = "/dev/sdb"; options = "-d sat"; } ];
+        type = types.list types.optionSet;
+        options = [ smartdOpts ];
         description = ''
           List of devices to monitor. By default -- if this list is empty --,
           smartd will monitor all devices connected to the machine at the time
@@ -70,17 +104,15 @@ in
 
   config = mkIf cfg.enable {
 
-    jobs.smartd = {
-        description = "S.M.A.R.T. Daemon";
+    systemd.services.smartd = {
+      description = "S.M.A.R.T. Daemon";
 
-        environment.TZ = config.time.timeZone;
+      environment.TZ = config.time.timeZone;
 
-        startOn = "started syslogd";
+      wantedBy = [ "multi-user.target" ];
 
-        path = [ pkgs.smartmontools ];
-
-        exec = "smartd --no-fork --pidfile=/var/run/smartd.pid ${smartdFlags}";
-      };
+      serviceConfig.ExecStart = "${pkgs.smartmontools}/sbin/smartd --no-fork ${smartdFlags}";
+    };
 
   };
 

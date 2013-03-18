@@ -9,7 +9,6 @@ with pkgs.lib;
   options = {
 
     system.sbin.modprobe = mkOption {
-      # should be moved in module-init-tools
       internal = true;
       default = pkgs.writeTextFile {
         name = "modprobe";
@@ -18,7 +17,7 @@ with pkgs.lib;
         text =
           ''
             #! ${pkgs.stdenv.shell}
-            export MODULE_DIR=${config.system.modulesTree}/lib/modules/
+            export MODULE_DIR=/run/current-system/kernel-modules/lib/modules
 
             # Fall back to the kernel modules used at boot time if the
             # modules in the current configuration don't match the
@@ -27,7 +26,7 @@ with pkgs.lib;
                 MODULE_DIR=/run/booted-system/kernel-modules/lib/modules/
             fi
 
-            exec ${pkgs.module_init_tools}/sbin/modprobe "$@"
+            exec ${pkgs.kmod}/sbin/modprobe "$@"
           '';
       };
       description = ''
@@ -58,6 +57,7 @@ with pkgs.lib;
         <citerefentry><refentrytitle>modprobe.conf</refentrytitle>
         <manvolnum>5</manvolnum></citerefentry> for details.
       '';
+      type = types.lines;
     };
 
   };
@@ -78,6 +78,8 @@ with pkgs.lib;
         target = "modprobe.d/nixos.conf";
       };
 
+    environment.systemPackages = [ config.system.sbin.modprobe pkgs.kmod ];
+
     boot.blacklistedKernelModules =
       [ # This module is for debugging and generates gigantic amounts
         # of log output, so it should never be loaded automatically.
@@ -88,9 +90,10 @@ with pkgs.lib;
         # on modern machines.
         "snd_pcsp"
 
-        # !!! Hm, Ubuntu blacklists all framebuffer devices because
-        # they're "buggy" and cause suspend problems.  Maybe we should
-        # too?
+        # The cirrusfb module prevents X11 from starting.  FIXME:
+        # Ubuntu blacklists all framebuffer devices because they're
+        # "buggy" and cause suspend problems.  Maybe we should too?
+        "cirrusfb"
       ];
 
     system.activationScripts.modprobe =
@@ -104,8 +107,8 @@ with pkgs.lib;
 
     environment.shellInit =
       ''
-        export MODULE_DIR=${config.system.modulesTree}/lib/modules/
-      '';    
+        export MODULE_DIR=/run/current-system/kernel-modules/lib/modules
+      '';
 
   };
 

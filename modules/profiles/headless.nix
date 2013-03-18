@@ -10,19 +10,14 @@ with pkgs.lib;
   boot.vesa = false;
   boot.initrd.enableSplashScreen = false;
   services.ttyBackgrounds.enable = false;
-  services.mingetty.ttys = [ ];
+
+  # Don't start a tty on the serial consoles.
+  systemd.services."serial-getty@ttyS0".enable = false;
+  systemd.services."serial-getty@hvc0".enable = false;
 
   # Since we can't manually respond to a panic, just reboot.
-  boot.kernelParams = [ "panic=1" "stage1panic=1" ];
+  boot.kernelParams = [ "panic=1" "boot.panic_on_fail" ];
 
-  # Since we don't have an (interactive) console, disable the
-  # emergency shell (started if mountall fails).
-  jobs."mount-failed".script = mkOverride 50
-    ''
-      ${pkgs.utillinux}/bin/logger -p user.emerg -t mountall "filesystem ‘$DEVICE’ could not be mounted on ‘$MOUNTPOINT’"
-    '';
-
-  # Likewise, redirect mountall output from the console to the default
-  # Upstart job log file.
-  jobs."mountall".console = mkOverride 50 "";
+  # Don't allow emergency mode, because we don't have a console.
+  systemd.enableEmergencyMode = false;
 }

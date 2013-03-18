@@ -16,29 +16,4 @@ fi
 # We are not always an interactive shell.
 if [ -z "$PS1" ]; then return; fi
 
-# Check the window size after every command.
-shopt -s checkwinsize
-
-# Provide a nice prompt.
-PROMPT_COLOR="1;31m"
-let $UID && PROMPT_COLOR="1;32m"
-PS1="\n\[\033[$PROMPT_COLOR\][\u@\h:\w]\\$\[\033[0m\] "
-if test "$TERM" = "xterm"; then
-    PS1="\[\033]2;\h:\u:\w\007\]$PS1"
-fi
-
-# Check whether we're running a version of Bash that has support for
-# programmable completion. If we do, and if the current user has
-# installed the package 'bash-completion' in her $HOME/.nix-profile,
-# then completion is enabled automatically.
-if [ -f "$HOME/.nix-profile/etc/profile.d/bash_completion.sh" ]; then
-    if shopt -q progcomp &>/dev/null; then
-        . "$HOME/.nix-profile/etc/profile.d/bash_completion.sh"
-    fi
-fi
-
-# Some aliases.
-alias ls="ls --color=tty"
-alias ll="ls -l"
-alias l="ls -alh"
-alias which="type -P"
+@interactiveShellInit@

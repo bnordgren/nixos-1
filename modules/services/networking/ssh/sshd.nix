@@ -39,103 +39,47 @@ let
   );
 
   userOptions = {
+
     openssh.authorizedKeys = {
-
-      preserveExistingKeys = mkOption {
-        type = types.bool;
-        default = true;
-        description = ''
-          If this option is enabled, the keys specified in
-          <literal>keys</literal> and/or <literal>keyFiles</literal> will be
-          placed in a special section of the user's authorized_keys file
-          and any existing keys will be preserved. That section will be
-          regenerated each time NixOS is activated. However, if
-          <literal>preserveExisting</literal> isn't enabled, the complete file
-          will be generated, and any user modifications will be wiped out.
-        '';
-      };
-
       keys = mkOption {
         type = types.listOf types.string;
         default = [];
         description = ''
-          A list of verbatim OpenSSH public keys that should be inserted into the
-          user's authorized_keys file. You can combine the <literal>keys</literal> and
+          A list of verbatim OpenSSH public keys that should be added to the
+          user's authorized keys. The keys are added to a file that the SSH
+          daemon reads in addition to the the user's authorized_keys file.
+          You can combine the <literal>keys</literal> and
           <literal>keyFiles</literal> options.
         '';
       };
 
       keyFiles = mkOption {
-        #type = types.listOf types.string;
         default = [];
         description = ''
-          A list of files each containing one OpenSSH public keys that should be
-          inserted into the user's authorized_keys file. You can combine
-          the <literal>keyFiles</literal> and
-          <literal>keys</literal> options.
+          A list of files each containing one OpenSSH public key that should be
+          added to the user's authorized keys. The contents of the files are
+          read at build time and added to a file that the SSH daemon reads in
+          addition to the the user's authorized_keys file. You can combine the
+          <literal>keyFiles</literal> and <literal>keys</literal> options.
         '';
       };
-
     };
+
   };
 
-  mkAuthkeyScript =
-    let
-      marker1 = "### NixOS auto-added key. Do not edit!";
-      marker2 = "### NixOS will regenerate this file. Do not edit!";
-      users = map (userName: getAttr userName config.users.extraUsers) (attrNames config.users.extraUsers);
-      usersWithKeys = flip filter users (u:
-        length u.openssh.authorizedKeys.keys != 0 || length u.openssh.authorizedKeys.keyFiles != 0
-      );
-      userLoop = flip concatMapStrings usersWithKeys (u:
-        let
-          authKeys = concatStringsSep "," u.openssh.authorizedKeys.keys;
-          authKeyFiles = concatStrings (map (x: " ${x}") u.openssh.authorizedKeys.keyFiles);
-          preserveExisting = if u.openssh.authorizedKeys.preserveExistingKeys then "true" else "false";
-        in ''
-          mkAuthKeysFile "${u.name}" "${authKeys}" "${authKeyFiles}" "${preserveExisting}"
-        ''
-      );
-    in ''
-      mkAuthKeysFile() {
-        local userName="$1"
-        local authKeys="$2"
-        local authKeyFiles="$3"
-        local preserveExisting="$4"
-
-        eval homeDir=~$userName
-        if ! [ -d "$homeDir" ]; then
-          echo "User $userName does not exist"
-          return
-        fi
-        if ! [ -d "$homeDir/.ssh" ]; then
-          mkdir -v -m 700 "$homeDir/.ssh"
-          chown "$userName":users "$homeDir/.ssh"
-        fi
-        local authKeysFile="$homeDir/.ssh/authorized_keys"
-        touch "$authKeysFile"
-        if [ "$preserveExisting" == false ]; then
-          rm -f "$authKeysFile"
-          echo "${marker2}" > "$authKeysFile"
-        else
-          sed -i '/${marker1}/ d' "$authKeysFile"
-        fi
-        IFS=,
-        for f in $authKeys; do
-          echo "$f ${marker1}" >> "$authKeysFile"
-        done
-        unset IFS
-        for f in $authKeyFiles; do
-          if [ -f "$f" ]; then
-            echo "$(cat "$f") ${marker1}" >> "$authKeysFile"
-          fi
-        done
-        chown "$userName" "$authKeysFile"
-      }
-
-      ${userLoop}
-    '';
-
+  authKeysFiles = let
+    mkAuthKeyFile = u: {
+      target = "ssh/authorized_keys.d/${u.name}";
+      mode = "0444";
+      source = pkgs.writeText "${u.name}-authorized_keys" ''
+        ${concatStringsSep "\n" u.openssh.authorizedKeys.keys}
+        ${concatMapStrings (f: builtins.readFile f + "\n") u.openssh.authorizedKeys.keyFiles}
+      '';
+    };
+    usersWithKeys = attrValues (flip filterAttrs config.users.extraUsers (n: u:
+      length u.openssh.authorizedKeys.keys != 0 || length u.openssh.authorizedKeys.keyFiles != 0
+    ));
+  in map mkAuthKeyFile usersWithKeys;
 
 in
 
@@ -172,14 +116,13 @@ in
       };
 
       permitRootLogin = mkOption {
-        default = "yes";
+        default = "without-password";
         check = permitRootLoginCheck;
         description = ''
           Whether the root user can login using ssh. Valid values are
           <literal>yes</literal>, <literal>without-password</literal>,
           <literal>forced-commands-only</literal> or
           <literal>no</literal>.
-          If without-password doesn't work try <literal>yes</literal>.
         '';
       };
 
@@ -244,6 +187,11 @@ in
         '';
       };
 
+      authorizedKeysFiles = mkOption {
+        default = [];
+        description = "Files from with authorized keys are read.";
+      };
+
       extraConfig = mkOption {
         default = "";
         description = "Verbatim contents of <filename>sshd_config</filename>.";
@@ -256,11 +204,11 @@ in
           The set of system-wide known SSH hosts.
         '';
         example = [
-          { 
+          {
             hostNames = [ "myhost" "myhost.mydomain.com" "10.10.1.4" ];
             publicKeyFile = ./pubkeys/myhost_ssh_host_dsa_key.pub;
           }
-          { 
+          {
             hostNames = [ "myhost2" ];
             publicKeyFile = ./pubkeys/myhost2_ssh_host_dsa_key.pub;
           }
@@ -305,7 +253,7 @@ in
         home = "/var/empty";
       };
 
-    environment.etc = [
+    environment.etc = authKeysFiles ++ [
       { source = "${pkgs.openssh}/etc/ssh/moduli";
         target = "ssh/moduli";
       }
@@ -314,24 +262,20 @@ in
       }
     ];
 
-    jobs.sshd = {
+    systemd.services.sshd =
+      { description = "SSH Daemon";
 
-        description = "OpenSSH server";
+        wantedBy = [ "multi-user.target" ];
 
-        startOn = "started network-interfaces";
+        stopIfChanged = false;
 
-        environment = {
-          LD_LIBRARY_PATH = nssModulesPath;
-          # Duplicated from bashrc. OpenSSH needs a patch for this.
-          LOCALE_ARCHIVE = "/run/current-system/sw/lib/locale/locale-archive";
-        };
+        path = [ pkgs.openssh ];
 
-        path = [ pkgs.openssh pkgs.gnused ];
+        environment.LD_LIBRARY_PATH = nssModulesPath;
+        environment.LOCALE_ARCHIVE = "/run/current-system/sw/lib/locale/locale-archive";
 
         preStart =
           ''
-            ${mkAuthkeyScript}
-
             mkdir -m 0755 -p /etc/ssh
 
             if ! test -f ${cfg.hostKeyPath}; then
@@ -339,23 +283,33 @@ in
             fi
           '';
 
-        daemonType = "fork";
-
-        exec =
-          ''
-            ${pkgs.openssh}/sbin/sshd -h ${cfg.hostKeyPath} \
-              -f ${pkgs.writeText "sshd_config" cfg.extraConfig}
-          '';
+        serviceConfig =
+          { ExecStart =
+              "${pkgs.openssh}/sbin/sshd -h ${cfg.hostKeyPath} " +
+              "-f ${pkgs.writeText "sshd_config" cfg.extraConfig}";
+            Restart = "always";
+            Type = "forking";
+            KillMode = "process";
+            PIDFile = "/run/sshd.pid";
+          };
       };
 
     networking.firewall.allowedTCPPorts = cfg.ports;
 
+    security.pam.services = optional cfg.usePAM { name = "sshd"; startSession = true; showMotd = true; };
+
+    services.openssh.authorizedKeysFiles =
+      [ ".ssh/authorized_keys" ".ssh/authorized_keys2" "/etc/ssh/authorized_keys.d/%u" ];
+
     services.openssh.extraConfig =
       ''
+        PidFile /run/sshd.pid
+
         Protocol 2
 
         UsePAM ${if cfg.usePAM then "yes" else "no"}
 
+        AddressFamily ${if config.networking.enableIPv6 then "any" else "inet"}
         ${concatMapStrings (port: ''
           Port ${toString port}
         '') cfg.ports}
@@ -378,10 +332,15 @@ in
         GatewayPorts ${cfg.gatewayPorts}
         PasswordAuthentication ${if cfg.passwordAuthentication then "yes" else "no"}
         ChallengeResponseAuthentication ${if cfg.challengeResponseAuthentication then "yes" else "no"}
+
+        PrintMotd no # handled by pam_motd
+
+        AuthorizedKeysFile ${toString cfg.authorizedKeysFiles}
       '';
 
     assertions = [{ assertion = if cfg.forwardX11 then cfgc.setXAuthLocation else true;
                     message = "cannot enable X11 forwarding without setting xauth location";}];
+
   };
 
 }

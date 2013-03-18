@@ -5,24 +5,35 @@
 { config, pkgs, ... }:
 
 with pkgs.lib;
-
+let
+  options = {
+    ec2.metadata = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Whether to allow access to EC2 metadata.
+      '';
+    };
+  };
+in
 {
+  require = [options];
 
-  jobs.fetchEC2Data =
-    { name = "fetch-ec2-data";
+  systemd.services."fetch-ec2-data" =
+    { description = "Fetch EC2 Data";
 
-      startOn = "ip-up";
-
-      task = true;
+      wantedBy = [ "multi-user.target" ];
+      before = [ "sshd.service" ];
+      after = [ "network.target" ];
 
       path = [ pkgs.curl pkgs.iproute ];
 
       script =
         ''
           ip route del blackhole 169.254.169.254/32 || true
-          
+
           curl="curl --retry 3 --retry-delay 0 --fail"
-        
+
           echo "setting host name..."
           ${optionalString (config.networking.hostName == "") ''
             ${pkgs.nettools}/bin/hostname $($curl http://169.254.169.254/1.0/meta-data/hostname)
@@ -56,16 +67,21 @@ with pkgs.lib;
               echo "$key_pub" > /etc/ssh/ssh_host_dsa_key.pub
           fi
 
+          ${optionalString (! config.ec2.metadata) ''
           # Since the user data is sensitive, prevent it from being
           # accessed from now on.
           ip route add blackhole 169.254.169.254/32
+          ''}
         '';
+
+      serviceConfig.Type = "oneshot";
+      serviceConfig.RemainAfterExit = true;
     };
 
-  jobs.printHostKey =
-    { name = "print-host-key";
-      task = true;
-      startOn = "started sshd";
+  systemd.services."print-host-key" =
+    { description = "Print SSH Host Key";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "sshd.service" ];
       script =
         ''
           # Print the host public key on the console so that the user
@@ -75,10 +91,8 @@ with pkgs.lib;
           ${pkgs.openssh}/bin/ssh-keygen -l -f /etc/ssh/ssh_host_dsa_key.pub > /dev/console
           echo "-----END SSH HOST KEY FINGERPRINTS-----" > /dev/console
         '';
+      serviceConfig.Type = "oneshot";
+      serviceConfig.RemainAfterExit = true;
     };
-
-  # Only start sshd after we've obtained the host key (if given in the
-  # user data), otherwise the sshd job will generate one itself.
-  jobs.sshd.startOn = mkOverride 90 "stopped fetch-ec2-data";
 
 }

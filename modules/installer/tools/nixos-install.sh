@@ -5,7 +5,6 @@
 # - copy closure of Nix to target device
 # - register validity
 # - with a chroot to the target device:
-#   * do a nix-pull
 #   * nix-env -p /nix/var/nix/profiles/system -i <nix-expr for the configuration>
 #   * run the activation script of the configuration (also installs Grub)
 
@@ -17,7 +16,7 @@ if test -z "$mountPoint"; then
 fi
 
 if test -z "$NIXOS_CONFIG"; then
-    NIXOS_CONFIG=/mnt/etc/nixos/configuration.nix
+    NIXOS_CONFIG=/etc/nixos/configuration.nix
 fi
 
 if ! test -e "$mountPoint"; then
@@ -29,39 +28,43 @@ if ! grep -F -q " $mountPoint " /proc/mounts; then
     echo "$mountPoint doesn't appear to be a mount point"
     exit 1
 fi
-    
-if ! test -e "$NIXOS_CONFIG"; then
+
+if ! test -e "$mountPoint/$NIXOS_CONFIG"; then
     echo "configuration file $NIXOS_CONFIG doesn't exist"
     exit 1
 fi
-    
 
-# Do a nix-pull to speed up building.
-if test -n "@nixosURL@" -a ${NIXOS_PULL:-1} != 0; then
-    mkdir -p /nix/var/nix/channel-cache -m 0755
-    NIX_DOWNLOAD_CACHE=/nix/var/nix/channel-cache \
-        @nix@/bin/nix-pull @nixosURL@/MANIFEST || true
-fi
 
 
 # Mount some stuff in the target root directory.  We bind-mount /etc
 # into the chroot because we need networking and the nixbld user
 # accounts in /etc/passwd.  But we do need the target's /etc/nixos.
-mkdir -m 0755 -p $mountPoint/dev $mountPoint/proc $mountPoint/sys $mountPoint/mnt $mountPoint/etc
-mount --rbind /dev $mountPoint/dev
-mount --rbind /proc $mountPoint/proc
-mount --rbind /sys $mountPoint/sys
-mount --rbind / $mountPoint/mnt
+mkdir -m 0755 -p $mountPoint/dev $mountPoint/proc $mountPoint/sys $mountPoint/mnt $mountPoint/mnt2 $mountPoint/etc /etc/nixos
+mount --make-private / # systemd makes / shared, which is annoying
+mount --bind / $mountPoint/mnt
+mount --bind /nix $mountPoint/mnt/nix
+mount --bind /nix/store $mountPoint/mnt/nix/store
+mount --bind /dev $mountPoint/dev
+mount --bind /dev/shm $mountPoint/dev/shm
+mount --bind /proc $mountPoint/proc
+mount --bind /sys $mountPoint/sys
+mount --bind $mountPoint/etc/nixos $mountPoint/mnt2
 mount --bind /etc $mountPoint/etc
-mount --bind $mountPoint/mnt/$mountPoint/etc/nixos $mountPoint/etc/nixos
+mount --bind $mountPoint/mnt2 $mountPoint/etc/nixos
 
 cleanup() {
     set +e
-    umount -l $mountPoint/mnt
-    umount -l $mountPoint/dev
-    umount -l $mountPoint/proc
-    umount -l $mountPoint/sys
-    mountpoint -q $mountPoint/etc && umount -l $mountPoint/etc
+    mountpoint -q $mountPoint/etc/nixos && umount $mountPoint/etc/nixos
+    mountpoint -q $mountPoint/etc && umount $mountPoint/etc
+    umount $mountPoint/mnt2
+    umount $mountPoint/sys
+    umount $mountPoint/proc
+    umount $mountPoint/dev/shm
+    umount $mountPoint/dev
+    umount $mountPoint/mnt/nix/store
+    umount $mountPoint/mnt/nix
+    umount $mountPoint/mnt
+    rmdir $mountPoint/mnt $mountPoint/mnt2
 }
 
 trap "cleanup" EXIT
@@ -82,7 +85,12 @@ mkdir -m 0755 -p \
     $mountPoint/nix/var/log/nix/drvs
 
 mkdir -m 1775 -p $mountPoint/nix/store
-chown root:nixbld $mountPoint/nix/store
+build_users_group=$(@perl@/bin/perl -e 'use Nix::Config; Nix::Config::readConfig; print $Nix::Config::config{"build-users-group"};')
+if test -n "$build_users_group"; then
+    chown root:"$build_users_group" $mountPoint/nix/store
+else
+    chown root $mountPoint/nix/store
+fi
 
 
 # Get the store paths to copy from the references graph.
@@ -104,9 +112,19 @@ export LC_ALL=
 export LC_TIME=
 
 
+# There is no daemon in the chroot
+unset NIX_REMOTE
+
+
 # Create a temporary Nix config file that causes the nixbld users to
 # be used.
-echo "build-users-group = nixbld" > $mountPoint/tmp/nix.conf
+if test -n "$build_users_group"; then
+    echo "build-users-group = $build_users_group" > $mountPoint/tmp/nix.conf
+fi
+binary_caches=$(@perl@/bin/perl -e 'use Nix::Config; Nix::Config::readConfig; print $Nix::Config::config{"binary-caches"};')
+if test -n "$binary_caches"; then
+    echo "binary-caches = $binary_caches" >> $mountPoint/tmp/nix.conf
+fi
 export NIX_CONF_DIR=/tmp
 
 
@@ -145,25 +163,29 @@ done
 
 
 # Get the absolute path to the NixOS/Nixpkgs sources.
-srcs=$(nix-env -p /nix/var/nix/profiles/per-user/root/channels -q nixos --no-name --out-path)
+nixpkgs_src=$(readlink -f $(nix-instantiate --find-file nixpkgs))
+nixos_src=$(readlink -f $(nix-instantiate --find-file nixos))
 
 
 # Build the specified Nix expression in the target store and install
 # it into the system configuration profile.
 echo "building the system configuration..."
-NIX_PATH="/mnt$srcs/nixos:nixos-config=/mnt$NIXOS_CONFIG" NIXOS_CONFIG= \
+NIX_PATH="nixpkgs=/mnt$nixpkgs_src:nixos=/mnt$nixos_src:nixos-config=$NIXOS_CONFIG" NIXOS_CONFIG= \
     chroot $mountPoint @nix@/bin/nix-env \
     -p /nix/var/nix/profiles/system -f '<nixos>' --set -A system --show-trace
 
 
 # Copy the NixOS/Nixpkgs sources to the target as the initial contents
 # of the NixOS channel.
-echo "copying NixOS/Nixpkgs sources..."
 mkdir -m 0755 -p $mountPoint/nix/var/nix/profiles
 mkdir -m 1777 -p $mountPoint/nix/var/nix/profiles/per-user
 mkdir -m 0755 -p $mountPoint/nix/var/nix/profiles/per-user/root
-chroot $mountPoint @nix@/bin/nix-env \
-    -p /nix/var/nix/profiles/per-user/root/channels -i "$srcs" --quiet
+srcs=$(nix-env -p /nix/var/nix/profiles/per-user/root/channels -q nixos --no-name --out-path 2>/dev/null || echo -n "")
+if test -n "$srcs"; then
+    echo "copying NixOS/Nixpkgs sources..."
+    chroot $mountPoint @nix@/bin/nix-env \
+        -p /nix/var/nix/profiles/per-user/root/channels -i "$srcs" --quiet
+fi
 mkdir -m 0700 -p $mountPoint/root/.nix-defexpr
 ln -sfn /nix/var/nix/profiles/per-user/root/channels $mountPoint/root/.nix-defexpr/channels
 

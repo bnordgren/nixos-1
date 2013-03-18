@@ -10,6 +10,7 @@
   ./config/pulseaudio.nix
   ./config/shells.nix
   ./config/swap.nix
+  ./config/sysctl.nix
   ./config/system-path.nix
   ./config/timezone.nix
   ./config/unix-odbc-drivers.nix
@@ -36,28 +37,29 @@
   ./misc/passthru.nix
   ./misc/version.nix
   ./programs/bash/bash.nix
+  ./programs/bash/command-not-found.nix
   ./programs/blcr.nix
   ./programs/info.nix
   ./programs/shadow.nix
+  ./programs/shell.nix
   ./programs/ssh.nix
   ./programs/ssmtp.nix
   ./programs/wvdial.nix
   ./rename.nix
   ./security/apparmor.nix
   ./security/ca.nix
-  ./security/consolekit.nix
   ./security/pam.nix
   ./security/pam_usb.nix
-  ./security/policykit.nix
   ./security/polkit.nix
+  ./security/rngd.nix
   ./security/rtkit.nix
   ./security/setuid-wrappers.nix
   ./security/sudo.nix
+  ./services/amqp/activemq/default.nix
   ./services/amqp/rabbitmq.nix
   ./services/audio/alsa.nix
   ./services/audio/fuppes.nix
   ./services/audio/mpd.nix
-  ./services/audio/pulseaudio.nix
   ./services/backup/mysql-backup.nix
   ./services/backup/postgresql-backup.nix
   ./services/backup/sitecopy-backup.nix
@@ -72,7 +74,6 @@
   ./services/games/ghost-one.nix
   ./services/hardware/acpid.nix
   ./services/hardware/bluetooth.nix
-  ./services/hardware/hal.nix
   ./services/hardware/nvidia-optimus.nix
   ./services/hardware/pcscd.nix
   ./services/hardware/pommed.nix
@@ -85,7 +86,8 @@
   ./services/logging/logrotate.nix
   ./services/logging/logstash.nix
   ./services/logging/syslogd.nix
-  ./services/mail/dovecot2.nix
+  ./services/logging/rsyslogd.nix
+  ./services/mail/dovecot.nix
   ./services/mail/freepops.nix
   ./services/mail/mail.nix
   ./services/mail/postfix.nix
@@ -101,6 +103,7 @@
   ./services/misc/rogue.nix
   ./services/misc/svnserve.nix
   ./services/misc/synergy.nix
+  ./services/monitoring/dd-agent.nix
   ./services/monitoring/monit.nix
   ./services/monitoring/nagios/default.nix
   ./services/monitoring/smartd.nix
@@ -129,8 +132,10 @@
   ./services/networking/gnunet.nix
   ./services/networking/gogoclient.nix
   ./services/networking/gvpe.nix
+  ./services/networking/hostapd.nix
   ./services/networking/ifplugd.nix
   ./services/networking/ircd-hybrid/default.nix
+  ./services/networking/minidlna.nix
   ./services/networking/nat.nix
   ./services/networking/networkmanager.nix
   ./services/networking/ntpd.nix
@@ -151,6 +156,7 @@
   ./services/networking/unbound.nix
   ./services/networking/vsftpd.nix
   ./services/networking/wakeonlan.nix
+  ./services/networking/websockify.nix
   ./services/networking/wicd.nix
   ./services/networking/wpa_supplicant.nix
   ./services/networking/xinetd.nix
@@ -162,16 +168,20 @@
   ./services/security/fprot.nix
   ./services/security/frandom.nix
   ./services/security/tor.nix
+  ./services/security/torify.nix
   ./services/security/torsocks.nix
-  ./services/system/cgroups.nix
   ./services/system/dbus.nix
   ./services/system/kerberos.nix
   ./services/system/nscd.nix
   ./services/system/uptimed.nix
+  ./services/torrent/deluge.nix
+  ./services/torrent/transmission.nix
   ./services/ttys/gpm.nix
-  ./services/ttys/mingetty.nix
+  ./services/ttys/agetty.nix
   ./services/web-servers/apache-httpd/default.nix
   ./services/web-servers/jboss/default.nix
+  ./services/web-servers/lighttpd.nix
+  ./services/web-servers/nginx/default.nix
   ./services/web-servers/tomcat.nix
   ./services/web-servers/geonetwork/default.nix
   ./services/web-servers/geoserver/default.nix
@@ -199,18 +209,20 @@
   ./system/activation/top-level.nix
   ./system/boot/kernel.nix
   ./system/boot/loader/efi-boot-stub/efi-boot-stub.nix
+  ./system/boot/loader/efi.nix
   ./system/boot/loader/generations-dir/generations-dir.nix
+  ./system/boot/loader/gummiboot/gummiboot.nix
+  ./system/boot/loader/raspberrypi/raspberrypi.nix
   ./system/boot/loader/grub/grub.nix
   ./system/boot/loader/grub/memtest.nix
   ./system/boot/loader/init-script/init-script.nix
   ./system/boot/luksroot.nix
   ./system/boot/modprobe.nix
+  ./system/boot/shutdown.nix
   ./system/boot/stage-1.nix
   ./system/boot/stage-2.nix
+  ./system/boot/systemd.nix
   ./system/etc/etc.nix
-  ./system/upstart-events/control-alt-delete.nix
-  ./system/upstart-events/runlevel.nix
-  ./system/upstart-events/shutdown.nix
   ./system/upstart/upstart.nix
   ./tasks/cpu-freq.nix
   ./tasks/filesystems.nix
@@ -218,8 +230,10 @@
   ./tasks/filesystems/ext.nix
   ./tasks/filesystems/nfs.nix
   ./tasks/filesystems/reiserfs.nix
+  ./tasks/filesystems/unionfs-fuse.nix
   ./tasks/filesystems/vfat.nix
   ./tasks/filesystems/xfs.nix
+  ./tasks/filesystems/zfs.nix
   ./tasks/kbd.nix
   ./tasks/lvm.nix
   ./tasks/network-interfaces.nix
